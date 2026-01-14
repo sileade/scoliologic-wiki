@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { WikiEditor } from "@/components/WikiEditor";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { FavoritesSidebar } from "@/components/FavoritesSidebar";
+import { TagInput } from "@/components/TagInput";
 import { PageTree } from "@/components/PageTree";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -436,6 +437,11 @@ export default function Wiki() {
                       ) : (
                         <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
                       )}
+                    </div>
+                    
+                    {/* Tags */}
+                    <div className="flex-1 min-w-0">
+                      <TagInput pageId={currentPage.id} editable={canEdit} />
                     </div>
                     
                     <div className="flex items-center gap-2 shrink-0">

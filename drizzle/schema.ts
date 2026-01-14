@@ -456,3 +456,36 @@ export const favorites = mysqlTable("favorites", {
 
 export type Favorite = typeof favorites.$inferSelect;
 export type InsertFavorite = typeof favorites.$inferInsert;
+
+
+/**
+ * Tags for categorizing pages
+ */
+export const tags = mysqlTable("tags", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  slug: varchar("slug", { length: 100 }).notNull().unique(),
+  color: varchar("color", { length: 7 }).default("#6B7280"),
+  description: text("description"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdById: int("createdById"),
+});
+
+export type Tag = typeof tags.$inferSelect;
+export type InsertTag = typeof tags.$inferInsert;
+
+/**
+ * Page-to-tag junction table
+ */
+export const pageTags = mysqlTable("page_tags", {
+  id: int("id").autoincrement().primaryKey(),
+  pageId: int("pageId").notNull(),
+  tagId: int("tagId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdById: int("createdById"),
+}, (table) => [
+  index("page_tag_idx").on(table.pageId, table.tagId),
+]);
+
+export type PageTag = typeof pageTags.$inferSelect;
+export type InsertPageTag = typeof pageTags.$inferInsert;

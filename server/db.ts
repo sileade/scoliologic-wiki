@@ -16,7 +16,9 @@ import {
   InsertNotification, notifications,
   InsertNotificationPreference, notificationPreferences,
   InsertFavorite, favorites,
-  User, Group, Page, PageVersion, PagePermission, Notification, NotificationPreference
+  InsertTag, tags,
+  InsertPageTag, pageTags,
+  User, Group, Page, PageVersion, PagePermission, Notification, NotificationPreference, Tag
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1058,4 +1060,174 @@ export async function getUserFavoritePageIds(userId: number): Promise<number[]> 
     .where(eq(favorites.userId, userId));
   
   return result.map(r => r.pageId);
+}
+
+
+// ============ TAG FUNCTIONS ============
+
+export async function createTag(data: InsertTag): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(tags).values(data);
+  return result[0].insertId;
+}
+
+export async function updateTag(id: number, data: Partial<InsertTag>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(tags).set(data).where(eq(tags.id, id));
+}
+
+export async function deleteTag(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  // First delete all page-tag associations
+  await db.delete(pageTags).where(eq(pageTags.tagId, id));
+  // Then delete the tag
+  await db.delete(tags).where(eq(tags.id, id));
+}
+
+export async function getTagById(id: number): Promise<Tag | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(tags).where(eq(tags.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getTagBySlug(slug: string): Promise<Tag | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(tags).where(eq(tags.slug, slug)).limit(1);
+  return result[0];
+}
+
+export async function getAllTags(): Promise<Tag[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tags).orderBy(tags.name);
+}
+
+export async function searchTags(query: string): Promise<Tag[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tags).where(like(tags.name, `%${query}%`)).orderBy(tags.name).limit(20);
+}
+
+// ============ PAGE-TAG FUNCTIONS ============
+
+export async function addTagToPage(pageId: number, tagId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  
+  // Check if already exists
+  const existing = await db.select()
+    .from(pageTags)
+    .where(and(eq(pageTags.pageId, pageId), eq(pageTags.tagId, tagId)))
+    .limit(1);
+  
+  if (existing.length === 0) {
+    await db.insert(pageTags).values({
+      pageId,
+      tagId,
+      createdById: userId,
+    });
+  }
+}
+
+export async function removeTagFromPage(pageId: number, tagId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(pageTags).where(
+    and(eq(pageTags.pageId, pageId), eq(pageTags.tagId, tagId))
+  );
+}
+
+export async function getPageTags(pageId: number): Promise<Tag[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select({
+    id: tags.id,
+    name: tags.name,
+    slug: tags.slug,
+    color: tags.color,
+    description: tags.description,
+    createdAt: tags.createdAt,
+    createdById: tags.createdById,
+  })
+    .from(pageTags)
+    .innerJoin(tags, eq(pageTags.tagId, tags.id))
+    .where(eq(pageTags.pageId, pageId))
+    .orderBy(tags.name);
+  
+  return result;
+}
+
+export async function getPagesByTag(tagId: number): Promise<Page[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select({
+    id: pages.id,
+    title: pages.title,
+    slug: pages.slug,
+    icon: pages.icon,
+    content: pages.content,
+    contentJson: pages.contentJson,
+    parentId: pages.parentId,
+    order: pages.order,
+    isPublic: pages.isPublic,
+    isArchived: pages.isArchived,
+    createdAt: pages.createdAt,
+    updatedAt: pages.updatedAt,
+    createdById: pages.createdById,
+    lastEditedById: pages.lastEditedById,
+    coverImage: pages.coverImage,
+  })
+    .from(pageTags)
+    .innerJoin(pages, eq(pageTags.pageId, pages.id))
+    .where(eq(pageTags.tagId, tagId))
+    .orderBy(pages.title);
+  
+  return result;
+}
+
+export async function setPageTags(pageId: number, tagIds: number[], userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  
+  // Remove all existing tags
+  await db.delete(pageTags).where(eq(pageTags.pageId, pageId));
+  
+  // Add new tags
+  if (tagIds.length > 0) {
+    await db.insert(pageTags).values(
+      tagIds.map(tagId => ({
+        pageId,
+        tagId,
+        createdById: userId,
+      }))
+    );
+  }
+}
+
+export async function getTagsWithPageCount(): Promise<Array<Tag & { pageCount: number }>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const allTags = await getAllTags();
+  const result: Array<Tag & { pageCount: number }> = [];
+  
+  for (const tag of allTags) {
+    const countResult = await db.select({ count: sql<number>`count(*)` })
+      .from(pageTags)
+      .where(eq(pageTags.tagId, tag.id));
+    
+    result.push({
+      ...tag,
+      pageCount: countResult[0]?.count || 0,
+    });
+  }
+  
+  return result;
 }

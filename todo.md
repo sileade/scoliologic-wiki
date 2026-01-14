@@ -232,4 +232,19 @@
 - [x] Implement Markdown export for multiple pages
 - [x] Add export button to page actions
 - [x] Update README with new features
+- [x] Push changes to GitHub
+
+
+## Markdown Import and Tags System
+- [x] Create Markdown to TipTap JSON converter
+- [x] Implement import API endpoint
+- [x] Add import UI (file upload dialog)
+- [x] Create tags table in database schema
+- [x] Create page_tags junction table
+- [x] Add tags functions to db.ts
+- [x] Implement tags API (create, list, assign, remove)
+- [x] Create TagInput UI component
+- [x] Add tags display to page header
+- [x] Add tags filter to search
+- [x] Update README with new features
 - [ ] Push changes to GitHub

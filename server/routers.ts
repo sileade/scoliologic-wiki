@@ -10,7 +10,7 @@ import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as ollama from "./ollama";
 import { generatePDF, generateMultiPagePDF } from "./pdf";
-import { generateMarkdownFile, generateMarkdownBundle } from "./markdown";
+import { generateMarkdownFile, generateMarkdownBundle, markdownToTipTap } from "./markdown";
 
 // Admin procedure middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -1360,6 +1360,196 @@ export const appRouter = router({
 
         await processPage(page);
         return results;
+      }),
+
+    // Import Markdown content
+    importPage: editorProcedure
+      .input(z.object({
+        markdown: z.string(),
+        parentId: z.number().nullable().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = markdownToTipTap(input.markdown);
+        
+        // Create the page
+        const pageId = await db.createPage({
+          title: result.title,
+          slug: result.metadata.slug || result.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          icon: result.metadata.icon || '📄',
+          contentJson: result.content,
+          parentId: input.parentId || null,
+          createdById: ctx.user.id,
+        });
+
+        return {
+          pageId,
+          title: result.title,
+          metadata: result.metadata,
+        };
+      }),
+
+    // Import multiple Markdown files
+    importMultiple: editorProcedure
+      .input(z.object({
+        files: z.array(z.object({
+          filename: z.string(),
+          content: z.string(),
+        })),
+        parentId: z.number().nullable().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const results: Array<{ pageId: number; title: string; filename: string }> = [];
+
+        for (const file of input.files) {
+          const result = markdownToTipTap(file.content);
+          
+          // Use filename as title if no title found
+          const title = result.title !== 'Imported Page' 
+            ? result.title 
+            : file.filename.replace(/\.md$/, '').replace(/[-_]/g, ' ');
+          
+          const pageId = await db.createPage({
+            title,
+            slug: result.metadata.slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            icon: result.metadata.icon || '📄',
+            contentJson: result.content,
+            parentId: input.parentId || null,
+            createdById: ctx.user.id,
+          });
+
+          results.push({
+            pageId,
+            title,
+            filename: file.filename,
+          });
+        }
+
+        return results;
+      }),
+  }),
+
+  // ==================== TAGS ====================
+  tags: router({
+    // List all tags
+    list: publicProcedure.query(async () => {
+      return db.getAllTags();
+    }),
+
+    // List tags with page count
+    listWithCount: publicProcedure.query(async () => {
+      return db.getTagsWithPageCount();
+    }),
+
+    // Search tags
+    search: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        return db.searchTags(input.query);
+      }),
+
+    // Get tag by ID
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getTagById(input.id);
+      }),
+
+    // Get tag by slug
+    getBySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input }) => {
+        return db.getTagBySlug(input.slug);
+      }),
+
+    // Create tag
+    create: editorProcedure
+      .input(z.object({
+        name: z.string().min(1).max(100),
+        color: z.string().optional(),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const tagId = await db.createTag({
+          name: input.name,
+          slug,
+          color: input.color || '#6B7280',
+          description: input.description,
+          createdById: ctx.user.id,
+        });
+        return { id: tagId, slug };
+      }),
+
+    // Update tag
+    update: editorProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(100).optional(),
+        color: z.string().optional(),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        if (data.name) {
+          (data as any).slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        }
+        await db.updateTag(id, data);
+        return { success: true };
+      }),
+
+    // Delete tag
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteTag(input.id);
+        return { success: true };
+      }),
+
+    // Get pages by tag
+    getPages: publicProcedure
+      .input(z.object({ tagId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getPagesByTag(input.tagId);
+      }),
+
+    // Get tags for a page
+    getForPage: publicProcedure
+      .input(z.object({ pageId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getPageTags(input.pageId);
+      }),
+
+    // Add tag to page
+    addToPage: editorProcedure
+      .input(z.object({
+        pageId: z.number(),
+        tagId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.addTagToPage(input.pageId, input.tagId, ctx.user.id);
+        return { success: true };
+      }),
+
+    // Remove tag from page
+    removeFromPage: editorProcedure
+      .input(z.object({
+        pageId: z.number(),
+        tagId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.removeTagFromPage(input.pageId, input.tagId);
+        return { success: true };
+      }),
+
+    // Set all tags for a page
+    setForPage: editorProcedure
+      .input(z.object({
+        pageId: z.number(),
+        tagIds: z.array(z.number()),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.setPageTags(input.pageId, input.tagIds, ctx.user.id);
+        return { success: true };
       }),
   }),
 });
