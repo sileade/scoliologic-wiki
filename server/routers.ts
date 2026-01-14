@@ -9,6 +9,7 @@ import { invokeLLM } from "./_core/llm";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as ollama from "./ollama";
+import { generatePDF, generateMultiPagePDF } from "./pdf";
 
 // Admin procedure middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -897,6 +898,218 @@ export const appRouter = router({
           message: input.message,
         });
         return { id };
+      }),
+  }),
+
+  // ============ PDF EXPORT ============
+  pdf: router({
+    // Export single page to PDF
+    exportPage: protectedProcedure
+      .input(z.object({
+        pageId: z.number(),
+        options: z.object({
+          format: z.enum(["A4", "Letter", "Legal"]).optional(),
+          landscape: z.boolean().optional(),
+        }).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getPageById(input.pageId);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+
+        // Check access
+        if (!page.isPublic && ctx.user.role !== "admin") {
+          const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
+          if (!perm) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+          }
+        }
+
+        // Get author info
+        const author = page.createdById ? await db.getUserById(page.createdById) : null;
+
+        // Generate PDF
+        const pdfBuffer = await generatePDF(
+          {
+            title: page.title,
+            content: page.content || "",
+            author: author?.name || undefined,
+            createdAt: page.createdAt ? new Date(page.createdAt) : undefined,
+            updatedAt: page.updatedAt ? new Date(page.updatedAt) : undefined,
+          },
+          input.options
+        );
+
+        // Upload to storage
+        const fileName = `exports/${ctx.user.id}/${Date.now()}-${page.title.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+        const { url } = await storagePut(fileName, pdfBuffer, "application/pdf");
+
+        // Log activity
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "export_pdf",
+          entityType: "page",
+          entityId: input.pageId,
+          details: { pageTitle: page.title },
+        });
+
+        return { url, fileName: `${page.title}.pdf` };
+      }),
+
+    // Export multiple pages to PDF
+    exportPages: protectedProcedure
+      .input(z.object({
+        pageIds: z.array(z.number()),
+        options: z.object({
+          format: z.enum(["A4", "Letter", "Legal"]).optional(),
+          landscape: z.boolean().optional(),
+        }).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (input.pageIds.length === 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No pages specified" });
+        }
+
+        if (input.pageIds.length > 50) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Maximum 50 pages per export" });
+        }
+
+        // Get all pages
+        const pages = await Promise.all(
+          input.pageIds.map(async (pageId) => {
+            const page = await db.getPageById(pageId);
+            if (!page) return null;
+
+            // Check access
+            if (!page.isPublic && ctx.user.role !== "admin") {
+              const perm = await db.checkUserPagePermission(ctx.user.id, pageId);
+              if (!perm) return null;
+            }
+
+            const author = page.createdById ? await db.getUserById(page.createdById) : null;
+
+            return {
+              title: page.title,
+              content: page.content || "",
+              author: author?.name || undefined,
+              createdAt: page.createdAt ? new Date(page.createdAt) : undefined,
+              updatedAt: page.updatedAt ? new Date(page.updatedAt) : undefined,
+            };
+          })
+        );
+
+        const validPages = pages.filter((p): p is NonNullable<typeof p> => p !== null);
+
+        if (validPages.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "No accessible pages found" });
+        }
+
+        // Generate multi-page PDF
+        const pdfBuffer = await generateMultiPagePDF(validPages, input.options);
+
+        // Upload to storage
+        const fileName = `exports/${ctx.user.id}/${Date.now()}-wiki-export.pdf`;
+        const { url } = await storagePut(fileName, pdfBuffer, "application/pdf");
+
+        // Log activity
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "export_pdf",
+          entityType: "page",
+          entityId: input.pageIds[0],
+          details: { pageCount: validPages.length },
+        });
+
+        return { url, fileName: `wiki-export-${validPages.length}-pages.pdf`, pageCount: validPages.length };
+      }),
+
+    // Export page with children
+    exportWithChildren: protectedProcedure
+      .input(z.object({
+        pageId: z.number(),
+        includeChildren: z.boolean().default(true),
+        options: z.object({
+          format: z.enum(["A4", "Letter", "Legal"]).optional(),
+          landscape: z.boolean().optional(),
+        }).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const rootPage = await db.getPageById(input.pageId);
+        if (!rootPage) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+
+        // Check access to root page
+        if (!rootPage.isPublic && ctx.user.role !== "admin") {
+          const perm = await db.checkUserPagePermission(ctx.user.id, rootPage.id);
+          if (!perm) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+          }
+        }
+
+        // Collect all pages to export
+        const pagesToExport: Array<{
+          title: string;
+          content: string;
+          author?: string;
+          createdAt?: Date;
+          updatedAt?: Date;
+        }> = [];
+
+        // Helper to recursively get children
+        async function collectPages(pageId: number, depth: number = 0) {
+          if (depth > 10) return; // Prevent infinite recursion
+
+          const page = await db.getPageById(pageId);
+          if (!page) return;
+
+          if (!page.isPublic && ctx.user.role !== "admin") {
+            const perm = await db.checkUserPagePermission(ctx.user.id, pageId);
+            if (!perm) return;
+          }
+
+          const author = page.createdById ? await db.getUserById(page.createdById) : null;
+
+          pagesToExport.push({
+            title: page.title,
+            content: page.content || "",
+            author: author?.name || undefined,
+            createdAt: page.createdAt ? new Date(page.createdAt) : undefined,
+            updatedAt: page.updatedAt ? new Date(page.updatedAt) : undefined,
+          });
+
+          if (input.includeChildren) {
+            const children = await db.getChildPages(pageId);
+            for (const child of children) {
+              await collectPages(child.id, depth + 1);
+            }
+          }
+        }
+
+        await collectPages(input.pageId);
+
+        if (pagesToExport.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "No accessible pages found" });
+        }
+
+        // Generate PDF
+        const pdfBuffer = await generateMultiPagePDF(pagesToExport, input.options);
+
+        // Upload to storage
+        const fileName = `exports/${ctx.user.id}/${Date.now()}-${rootPage.title.replace(/[^a-zA-Z0-9]/g, "_")}-export.pdf`;
+        const { url } = await storagePut(fileName, pdfBuffer, "application/pdf");
+
+        // Log activity
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "export_pdf",
+          entityType: "page",
+          entityId: input.pageId,
+          details: { pageTitle: rootPage.title, pageCount: pagesToExport.length, includeChildren: input.includeChildren },
+        });
+
+        return { url, fileName: `${rootPage.title}-export.pdf`, pageCount: pagesToExport.length };
       }),
   }),
 });

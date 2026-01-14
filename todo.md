@@ -199,4 +199,12 @@
 - [x] Integrate Sentry for error monitoring
 - [x] Add Playwright E2E tests for UI flows
 - [x] Update README with new features
+- [x] Push changes to GitHub
+
+
+## Advanced Features (Phase 3)
+- [x] Setup CI/CD with GitHub Actions for automatic test runs
+- [x] Implement WebSocket notifications for real-time page updates
+- [x] Implement PDF export for wiki pages
+- [x] Update README with new features
 - [ ] Push changes to GitHub

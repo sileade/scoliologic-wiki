@@ -507,3 +507,83 @@ MIT License. См. файл [LICENSE](LICENSE) для деталей.
 **Scoliologic Wiki** — Создано для группы компаний Scoliologic
 
 </div>
+
+
+### CI/CD с GitHub Actions
+
+Проект включает автоматизированный CI/CD pipeline:
+
+```yaml
+# .github/workflows/ci.yml
+# Автоматически запускается при push и pull request
+```
+
+**Этапы pipeline:**
+1. **Lint** — проверка кода ESLint
+2. **Type Check** — проверка TypeScript
+3. **Unit Tests** — запуск Vitest тестов
+4. **Build** — сборка production bundle
+
+**Преимущества:**
+- Автоматическая проверка качества кода
+- Раннее обнаружение ошибок
+- Защита main ветки от некорректного кода
+
+---
+
+### WebSocket Real-time Updates
+
+Система поддерживает real-time уведомления через WebSocket:
+
+```typescript
+// Использование в компонентах
+import { useWebSocket } from '@/hooks/useWebSocket';
+
+const { isConnected, pageUpdates, userPresence } = useWebSocket();
+```
+
+**События:**
+| Событие | Описание |
+|---------|----------|
+| `page:updated` | Страница обновлена другим пользователем |
+| `page:created` | Создана новая страница |
+| `page:deleted` | Страница удалена |
+| `user:joined` | Пользователь просматривает страницу |
+| `user:left` | Пользователь покинул страницу |
+
+**Функции:**
+- Индикатор присутствия пользователей на странице
+- Уведомления об изменениях в реальном времени
+- Автоматическое переподключение при обрыве связи
+
+---
+
+### PDF Export
+
+Экспорт wiki страниц в PDF для печати и архивации:
+
+```typescript
+// API endpoints
+trpc.pdf.exportPage({ pageId: 1 })           // Одна страница
+trpc.pdf.exportPages({ pageIds: [1, 2, 3] }) // Несколько страниц
+trpc.pdf.exportWithChildren({ pageId: 1 })   // Страница с подстраницами
+```
+
+**Возможности:**
+- Экспорт одной страницы или группы страниц
+- Рекурсивный экспорт с подстраницами (до 10 уровней)
+- Форматы: A4, Letter, Legal
+- Ориентация: портретная или альбомная
+- Сохранение форматирования и стилей
+- Автоматическая загрузка в S3
+
+**Опции:**
+```typescript
+{
+  format: 'A4' | 'Letter' | 'Legal',
+  landscape: boolean
+}
+```
+
+---
+
