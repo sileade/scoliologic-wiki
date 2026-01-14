@@ -1,28 +1,921 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import * as db from "./db";
+import { invokeLLM } from "./_core/llm";
+import { storagePut } from "./storage";
+import { nanoid } from "nanoid";
+
+// Admin procedure middleware
+const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+  }
+  return next({ ctx });
+});
+
+// Editor procedure - allows edit or admin
+const editorProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "admin" && ctx.user.role !== "user") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Edit access required" });
+  }
+  return next({ ctx });
+});
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
+  
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
   }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  // ============ USER MANAGEMENT ============
+  users: router({
+    list: adminProcedure.query(async () => {
+      return db.getAllUsers();
+    }),
+    
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getUserById(input.id);
+      }),
+    
+    updateRole: adminProcedure
+      .input(z.object({
+        userId: z.number(),
+        role: z.enum(["user", "admin", "guest"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.updateUserRole(input.userId, input.role);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_user_role",
+          entityType: "user",
+          entityId: input.userId,
+          details: { newRole: input.role },
+        });
+        return { success: true };
+      }),
+    
+    getGroups: protectedProcedure
+      .input(z.object({ userId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getUserGroups(input.userId);
+      }),
+  }),
+
+  // ============ GROUP MANAGEMENT ============
+  groups: router({
+    list: protectedProcedure.query(async () => {
+      return db.getAllGroups();
+    }),
+    
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getGroupById(input.id);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        color: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await db.createGroup({
+          name: input.name,
+          description: input.description,
+          color: input.color,
+          createdById: ctx.user.id,
+        });
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "create_group",
+          entityType: "group",
+          entityId: id,
+          details: { name: input.name },
+        });
+        return { id };
+      }),
+    
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(255).optional(),
+        description: z.string().optional(),
+        color: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { id, ...data } = input;
+        await db.updateGroup(id, data);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_group",
+          entityType: "group",
+          entityId: id,
+          details: data,
+        });
+        return { success: true };
+      }),
+    
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await db.deleteGroup(input.id);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "delete_group",
+          entityType: "group",
+          entityId: input.id,
+        });
+        return { success: true };
+      }),
+    
+    getMembers: protectedProcedure
+      .input(z.object({ groupId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getGroupMembers(input.groupId);
+      }),
+    
+    addMember: adminProcedure
+      .input(z.object({
+        groupId: z.number(),
+        userId: z.number(),
+        role: z.enum(["member", "editor", "admin"]).default("member"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.addUserToGroup({
+          groupId: input.groupId,
+          userId: input.userId,
+          role: input.role,
+        });
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "add_group_member",
+          entityType: "group",
+          entityId: input.groupId,
+          details: { memberId: input.userId, role: input.role },
+        });
+        return { success: true };
+      }),
+    
+    removeMember: adminProcedure
+      .input(z.object({
+        groupId: z.number(),
+        userId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.removeUserFromGroup(input.userId, input.groupId);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "remove_group_member",
+          entityType: "group",
+          entityId: input.groupId,
+          details: { memberId: input.userId },
+        });
+        return { success: true };
+      }),
+    
+    updateMemberRole: adminProcedure
+      .input(z.object({
+        groupId: z.number(),
+        userId: z.number(),
+        role: z.enum(["member", "editor", "admin"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.addUserToGroup({
+          groupId: input.groupId,
+          userId: input.userId,
+          role: input.role,
+        });
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_member_role",
+          entityType: "group",
+          entityId: input.groupId,
+          details: { memberId: input.userId, newRole: input.role },
+        });
+        return { success: true };
+      }),
+  }),
+
+  // ============ PAGE MANAGEMENT ============
+  pages: router({
+    list: publicProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) {
+        // Guest: only public pages
+        return db.getPublicPages();
+      }
+      if (ctx.user.role === "admin") {
+        return db.getAllPages();
+      }
+      // Regular user: filter by permissions
+      const allPages = await db.getAllPages();
+      const accessiblePages = [];
+      for (const page of allPages) {
+        if (page.isPublic) {
+          accessiblePages.push(page);
+          continue;
+        }
+        const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
+        if (perm) {
+          accessiblePages.push(page);
+        }
+      }
+      return accessiblePages;
+    }),
+    
+    getRootPages: publicProcedure.query(async ({ ctx }) => {
+      const rootPages = await db.getRootPages();
+      if (!ctx.user) {
+        return rootPages.filter(p => p.isPublic);
+      }
+      if (ctx.user.role === "admin") {
+        return rootPages;
+      }
+      const accessiblePages = [];
+      for (const page of rootPages) {
+        if (page.isPublic) {
+          accessiblePages.push(page);
+          continue;
+        }
+        const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
+        if (perm) {
+          accessiblePages.push(page);
+        }
+      }
+      return accessiblePages;
+    }),
+    
+    getChildren: publicProcedure
+      .input(z.object({ parentId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const children = await db.getChildPages(input.parentId);
+        if (!ctx.user) {
+          return children.filter(p => p.isPublic);
+        }
+        if (ctx.user.role === "admin") {
+          return children;
+        }
+        const accessiblePages = [];
+        for (const page of children) {
+          if (page.isPublic) {
+            accessiblePages.push(page);
+            continue;
+          }
+          const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
+          if (perm) {
+            accessiblePages.push(page);
+          }
+        }
+        return accessiblePages;
+      }),
+    
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const page = await db.getPageById(input.id);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+        
+        // Check access
+        if (!ctx.user && !page.isPublic) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+        }
+        if (ctx.user && ctx.user.role !== "admin" && !page.isPublic) {
+          const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
+          if (!perm) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+          }
+        }
+        
+        return page;
+      }),
+    
+    getBySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const page = await db.getPageBySlug(input.slug);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+        
+        if (!ctx.user && !page.isPublic) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+        }
+        if (ctx.user && ctx.user.role !== "admin" && !page.isPublic) {
+          const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
+          if (!perm) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+          }
+        }
+        
+        return page;
+      }),
+    
+    create: editorProcedure
+      .input(z.object({
+        title: z.string().min(1).max(500),
+        content: z.string().optional(),
+        contentJson: z.any().optional(),
+        parentId: z.number().optional(),
+        icon: z.string().optional(),
+        isPublic: z.boolean().default(false),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const slug = `${input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${nanoid(6)}`;
+        const id = await db.createPage({
+          title: input.title,
+          slug,
+          content: input.content,
+          contentJson: input.contentJson,
+          parentId: input.parentId,
+          icon: input.icon,
+          isPublic: input.isPublic,
+          createdById: ctx.user.id,
+          lastEditedById: ctx.user.id,
+        });
+        
+        // Create initial version
+        await db.createPageVersion({
+          pageId: id,
+          title: input.title,
+          content: input.content,
+          contentJson: input.contentJson,
+          version: 1,
+          changeDescription: "Initial version",
+          createdById: ctx.user.id,
+        });
+        
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "create_page",
+          entityType: "page",
+          entityId: id,
+          details: { title: input.title },
+        });
+        
+        return { id, slug };
+      }),
+    
+    update: editorProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().min(1).max(500).optional(),
+        content: z.string().optional(),
+        contentJson: z.any().optional(),
+        icon: z.string().optional(),
+        coverImage: z.string().optional(),
+        isPublic: z.boolean().optional(),
+        parentId: z.number().nullable().optional(),
+        order: z.number().optional(),
+        changeDescription: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getPageById(input.id);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+        
+        // Check edit permission
+        if (ctx.user.role !== "admin") {
+          const perm = await db.checkUserPagePermission(ctx.user.id, input.id);
+          if (perm !== "edit" && perm !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Edit access required" });
+          }
+        }
+        
+        const { id, changeDescription, ...updateData } = input;
+        await db.updatePage(id, {
+          ...updateData,
+          lastEditedById: ctx.user.id,
+        });
+        
+        // Create new version if content changed
+        if (input.content !== undefined || input.contentJson !== undefined || input.title !== undefined) {
+          const latestVersion = await db.getLatestVersionNumber(id);
+          await db.createPageVersion({
+            pageId: id,
+            title: input.title || page.title,
+            content: input.content ?? page.content,
+            contentJson: input.contentJson ?? page.contentJson,
+            version: latestVersion + 1,
+            changeDescription: changeDescription || "Updated content",
+            createdById: ctx.user.id,
+          });
+        }
+        
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_page",
+          entityType: "page",
+          entityId: id,
+          details: { title: input.title || page.title },
+        });
+        
+        return { success: true };
+      }),
+    
+    delete: editorProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getPageById(input.id);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+        
+        if (ctx.user.role !== "admin") {
+          const perm = await db.checkUserPagePermission(ctx.user.id, input.id);
+          if (perm !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required to delete" });
+          }
+        }
+        
+        await db.deletePage(input.id);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "delete_page",
+          entityType: "page",
+          entityId: input.id,
+          details: { title: page.title },
+        });
+        
+        return { success: true };
+      }),
+    
+    archive: editorProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await db.updatePage(input.id, { isArchived: true });
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "archive_page",
+          entityType: "page",
+          entityId: input.id,
+        });
+        return { success: true };
+      }),
+    
+    search: publicProcedure
+      .input(z.object({ query: z.string(), limit: z.number().default(20) }))
+      .query(async ({ input, ctx }) => {
+        const results = await db.searchPages(input.query, input.limit);
+        if (!ctx.user) {
+          return results.filter(p => p.isPublic);
+        }
+        if (ctx.user.role === "admin") {
+          return results;
+        }
+        const accessibleResults = [];
+        for (const page of results) {
+          if (page.isPublic) {
+            accessibleResults.push(page);
+            continue;
+          }
+          const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
+          if (perm) {
+            accessibleResults.push(page);
+          }
+        }
+        return accessibleResults;
+      }),
+    
+    // Permissions
+    getPermissions: protectedProcedure
+      .input(z.object({ pageId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getPagePermissions(input.pageId);
+      }),
+    
+    setPermission: adminProcedure
+      .input(z.object({
+        pageId: z.number(),
+        groupId: z.number().optional(),
+        userId: z.number().optional(),
+        permission: z.enum(["read", "edit", "admin"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.setPagePermission({
+          pageId: input.pageId,
+          groupId: input.groupId,
+          userId: input.userId,
+          permission: input.permission,
+        });
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "set_page_permission",
+          entityType: "page",
+          entityId: input.pageId,
+          details: input,
+        });
+        return { success: true };
+      }),
+    
+    removePermission: adminProcedure
+      .input(z.object({ permissionId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await db.removePagePermission(input.permissionId);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "remove_page_permission",
+          entityType: "permission",
+          entityId: input.permissionId,
+        });
+        return { success: true };
+      }),
+    
+    // Versions
+    getVersions: protectedProcedure
+      .input(z.object({ pageId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getPageVersions(input.pageId);
+      }),
+    
+    getVersion: protectedProcedure
+      .input(z.object({ pageId: z.number(), version: z.number() }))
+      .query(async ({ input }) => {
+        return db.getPageVersion(input.pageId, input.version);
+      }),
+    
+    rollback: editorProcedure
+      .input(z.object({ pageId: z.number(), version: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const version = await db.getPageVersion(input.pageId, input.version);
+        if (!version) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Version not found" });
+        }
+        
+        await db.updatePage(input.pageId, {
+          title: version.title,
+          content: version.content,
+          contentJson: version.contentJson,
+          lastEditedById: ctx.user.id,
+        });
+        
+        const latestVersion = await db.getLatestVersionNumber(input.pageId);
+        await db.createPageVersion({
+          pageId: input.pageId,
+          title: version.title,
+          content: version.content,
+          contentJson: version.contentJson,
+          version: latestVersion + 1,
+          changeDescription: `Rolled back to version ${input.version}`,
+          createdById: ctx.user.id,
+        });
+        
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "rollback_page",
+          entityType: "page",
+          entityId: input.pageId,
+          details: { toVersion: input.version },
+        });
+        
+        return { success: true };
+      }),
+  }),
+
+  // ============ AI FEATURES ============
+  ai: router({
+    search: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        // Get all embeddings
+        const embeddings = await db.getAllEmbeddings();
+        if (embeddings.length === 0) {
+          // Fallback to text search
+          const results = await db.searchPages(input.query, 10);
+          return results.map(r => ({
+            pageId: r.id,
+            pageTitle: r.title,
+            pageSlug: r.slug,
+            snippet: r.content?.substring(0, 200) || "",
+            score: 1,
+          }));
+        }
+        
+        // Generate query embedding using LLM
+        const queryEmbedding = await generateEmbedding(input.query);
+        
+        // Calculate cosine similarity
+        const scored = embeddings.map(emb => {
+          const embedding = emb.embedding as number[];
+          const score = cosineSimilarity(queryEmbedding, embedding);
+          return {
+            pageId: emb.pageId,
+            pageTitle: emb.pageTitle,
+            pageSlug: emb.pageSlug,
+            snippet: emb.chunkText?.substring(0, 200) || "",
+            score,
+          };
+        });
+        
+        // Sort by score and deduplicate by page
+        scored.sort((a, b) => b.score - a.score);
+        const seen = new Set<number>();
+        const results = [];
+        for (const item of scored) {
+          if (!seen.has(item.pageId)) {
+            seen.add(item.pageId);
+            results.push(item);
+            if (results.length >= 10) break;
+          }
+        }
+        
+        // Filter by access
+        if (!ctx.user) {
+          const publicPages = await db.getPublicPages();
+          const publicIds = new Set(publicPages.map(p => p.id));
+          return results.filter(r => publicIds.has(r.pageId));
+        }
+        
+        return results;
+      }),
+    
+    generateEmbeddings: adminProcedure
+      .input(z.object({ pageId: z.number() }))
+      .mutation(async ({ input }) => {
+        const page = await db.getPageById(input.pageId);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+        
+        const text = `${page.title}\n\n${page.content || ""}`;
+        const chunks = splitIntoChunks(text, 500);
+        
+        const embeddedChunks = [];
+        for (const chunk of chunks) {
+          const embedding = await generateEmbedding(chunk);
+          embeddedChunks.push({ text: chunk, embedding });
+        }
+        
+        await db.savePageEmbeddings(input.pageId, embeddedChunks);
+        return { success: true, chunksCount: embeddedChunks.length };
+      }),
+    
+    assist: protectedProcedure
+      .input(z.object({
+        action: z.enum(["improve", "expand", "summarize", "grammar", "translate", "generate"]),
+        text: z.string(),
+        context: z.string().optional(),
+        targetLanguage: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const prompts: Record<string, string> = {
+          improve: "Improve the writing style and clarity of the following text while preserving its meaning. Return only the improved text:",
+          expand: "Expand and elaborate on the following text with more details and examples. Return only the expanded text:",
+          summarize: "Summarize the following text concisely. Return only the summary:",
+          grammar: "Fix any grammar and spelling errors in the following text. Return only the corrected text:",
+          translate: `Translate the following text to ${input.targetLanguage || "English"}. Return only the translation:`,
+          generate: "Based on the following context or topic, generate relevant wiki content. Return only the generated content:",
+        };
+        
+        const systemPrompt = "You are a professional wiki content assistant. Help users write clear, well-structured documentation.";
+        const userPrompt = `${prompts[input.action]}\n\n${input.context ? `Context: ${input.context}\n\n` : ""}${input.text}`;
+        
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+        });
+        
+        return {
+          result: response.choices[0]?.message?.content || "",
+        };
+      }),
+    
+    autocomplete: protectedProcedure
+      .input(z.object({
+        text: z.string(),
+        cursorPosition: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const textBeforeCursor = input.text.substring(0, input.cursorPosition);
+        
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a wiki content assistant. Complete the following text naturally. Return only the completion, not the original text." },
+            { role: "user", content: `Complete this text:\n\n${textBeforeCursor}` },
+          ],
+        });
+        
+        return {
+          completion: response.choices[0]?.message?.content || "",
+        };
+      }),
+  }),
+
+  // ============ MEDIA FILES ============
+  media: router({
+    upload: protectedProcedure
+      .input(z.object({
+        filename: z.string(),
+        mimeType: z.string(),
+        base64Data: z.string(),
+        pageId: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const buffer = Buffer.from(input.base64Data, "base64");
+        const fileKey = `wiki-media/${ctx.user.id}/${nanoid()}-${input.filename}`;
+        
+        const { url } = await storagePut(fileKey, buffer, input.mimeType);
+        
+        const id = await db.createMediaFile({
+          filename: input.filename,
+          originalName: input.filename,
+          mimeType: input.mimeType,
+          size: buffer.length,
+          url,
+          fileKey,
+          uploadedById: ctx.user.id,
+          pageId: input.pageId,
+        });
+        
+        return { id, url };
+      }),
+    
+    list: protectedProcedure
+      .input(z.object({ pageId: z.number().optional() }))
+      .query(async ({ input }) => {
+        return db.getMediaFiles(input.pageId);
+      }),
+    
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteMediaFile(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // ============ ADMIN FEATURES ============
+  admin: router({
+    getActivityLogs: adminProcedure
+      .input(z.object({ limit: z.number().default(100) }))
+      .query(async ({ input }) => {
+        return db.getActivityLogs(input.limit);
+      }),
+    
+    getSettings: adminProcedure.query(async () => {
+      return db.getAllSettings();
+    }),
+    
+    updateSetting: adminProcedure
+      .input(z.object({
+        key: z.string(),
+        value: z.string(),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.setSetting(input.key, input.value, input.description);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_setting",
+          entityType: "setting",
+          details: { key: input.key },
+        });
+        return { success: true };
+      }),
+    
+    getPendingAccessRequests: adminProcedure.query(async () => {
+      return db.getPendingAccessRequests();
+    }),
+    
+    handleAccessRequest: adminProcedure
+      .input(z.object({
+        requestId: z.number(),
+        action: z.enum(["approve", "reject"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.updateAccessRequest(
+          input.requestId,
+          input.action === "approve" ? "approved" : "rejected",
+          ctx.user.id
+        );
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: `${input.action}_access_request`,
+          entityType: "access_request",
+          entityId: input.requestId,
+        });
+        return { success: true };
+      }),
+    
+    getDashboardStats: adminProcedure.query(async () => {
+      const allUsers = await db.getAllUsers();
+      const allPages = await db.getAllPages();
+      const allGroups = await db.getAllGroups();
+      const recentActivity = await db.getActivityLogs(10);
+      
+      return {
+        totalUsers: allUsers.length,
+        totalPages: allPages.length,
+        totalGroups: allGroups.length,
+        recentActivity,
+      };
+    }),
+  }),
+
+  // ============ ACCESS REQUESTS ============
+  accessRequests: router({
+    create: protectedProcedure
+      .input(z.object({
+        pageId: z.number().optional(),
+        groupId: z.number().optional(),
+        requestedPermission: z.enum(["read", "edit", "admin"]).default("read"),
+        message: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await db.createAccessRequest({
+          userId: ctx.user.id,
+          pageId: input.pageId,
+          groupId: input.groupId,
+          requestedPermission: input.requestedPermission,
+          message: input.message,
+        });
+        return { id };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
+
+// Helper functions
+function splitIntoChunks(text: string, maxLength: number): string[] {
+  const chunks: string[] = [];
+  const paragraphs = text.split(/\n\n+/);
+  let currentChunk = "";
+  
+  for (const para of paragraphs) {
+    if (currentChunk.length + para.length > maxLength && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = "";
+    }
+    currentChunk += para + "\n\n";
+  }
+  
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks.length > 0 ? chunks : [text];
+}
+
+async function generateEmbedding(text: string): Promise<number[]> {
+  // Use LLM to generate a simple embedding representation
+  // In production, this would use a dedicated embedding model
+  const response = await invokeLLM({
+    messages: [
+      { role: "system", content: "Generate a semantic representation of the following text as a JSON array of 384 floating point numbers between -1 and 1. Return only the JSON array." },
+      { role: "user", content: text.substring(0, 1000) },
+    ],
+  });
+  
+  try {
+    const rawContent = response.choices[0]?.message?.content || "[]";
+    const content = typeof rawContent === "string" ? rawContent : "[]";
+    const match = content.match(/\[[\s\S]*\]/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+  } catch {
+    // Fallback: simple hash-based embedding
+  }
+  
+  // Fallback: generate deterministic pseudo-embedding from text
+  const embedding: number[] = [];
+  for (let i = 0; i < 384; i++) {
+    const charCode = text.charCodeAt(i % text.length) || 0;
+    embedding.push((charCode / 128) - 1);
+  }
+  return embedding;
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (!a || !b || a.length !== b.length) return 0;
+  
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  
+  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
+  return magnitude === 0 ? 0 : dotProduct / magnitude;
+}

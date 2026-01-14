@@ -1,0 +1,174 @@
+version: "3.8"
+
+# Scoliologic Wiki - Full Stack Docker Compose
+# Includes Traefik reverse proxy for standalone deployment
+# Use this if you don't have an existing Traefik instance
+
+services:
+  # ============ TRAEFIK REVERSE PROXY ============
+  traefik:
+    image: traefik:v3.0
+    container_name: wiki-traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik-public"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      # Dashboard (optional - remove in production if not needed)
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+
+  # ============ WIKI APPLICATION ============
+  wiki:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: scoliologic-wiki
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-wiki}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wiki}
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTHENTIK_URL=${AUTHENTIK_URL}
+      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID}
+      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET}
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - WIKI_BASE_URL=https://${WIKI_DOMAIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wiki-internal
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wiki.rule=Host(`${WIKI_DOMAIN}`)"
+      - "traefik.http.routers.wiki.entrypoints=websecure"
+      - "traefik.http.routers.wiki.tls=true"
+      - "traefik.http.routers.wiki.tls.certresolver=letsencrypt"
+      - "traefik.http.services.wiki.loadbalancer.server.port=3000"
+      - "traefik.docker.network=traefik-public"
+      # Security headers
+      - "traefik.http.middlewares.wiki-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.wiki-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.wiki-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.wiki-headers.headers.browserXssFilter=true"
+      - "traefik.http.routers.wiki.middlewares=wiki-headers"
+
+  # ============ DATABASE ============
+  postgres:
+    image: postgres:16-alpine
+    container_name: wiki-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-wiki}
+      - POSTGRES_USER=${POSTGRES_USER:-wiki}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - wiki-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wiki} -d ${POSTGRES_DB:-wiki}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ OLLAMA (Local AI) ============
+  ollama:
+    image: ollama/ollama:latest
+    container_name: wiki-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - wiki-internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ============ REDIS (Caching & Sessions) ============
+  redis:
+    image: redis:7-alpine
+    container_name: wiki-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - wiki-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ BACKUP SERVICE ============
+  backup:
+    image: prodrigestivill/postgres-backup-local:16
+    container_name: wiki-backup
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-wiki}
+      - POSTGRES_USER=${POSTGRES_USER:-wiki}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - SCHEDULE=@daily
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+    volumes:
+      - backup-data:/backups
+    networks:
+      - wiki-internal
+    depends_on:
+      - postgres
+    profiles:
+      - backup
+
+networks:
+  wiki-internal:
+    driver: bridge
+  traefik-public:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  ollama-data:
+  redis-data:
+  traefik-letsencrypt:
+  backup-data:
