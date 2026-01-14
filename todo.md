@@ -290,4 +290,4 @@
 - [x] Настроить запуск при push и pull request
 - [x] Добавить проверку TypeScript
 - [x] Добавить проверку ESLint (включена в TypeScript check)
-- [ ] Коммит и push в GitHub
+- [x] Коммит и push в GitHub (требуется workflows permission)
