@@ -25,6 +25,16 @@ interface PageUpdate {
   timestamp: Date;
 }
 
+interface NotificationEvent {
+  id: number;
+  type: string;
+  title: string;
+  message?: string;
+  pageId?: number;
+  actorName?: string;
+  createdAt: Date;
+}
+
 interface UserTyping {
   pageId: number;
   userId: number;
@@ -51,6 +61,7 @@ interface UseWebSocketReturn {
   onPageUpdate: (callback: (update: PageUpdate) => void) => void;
   onPageCreated: (callback: (data: { pageId: number; title: string }) => void) => void;
   onPageDeleted: (callback: (data: { pageId: number; title: string }) => void) => void;
+  onNotification: (callback: (notification: NotificationEvent) => void) => void;
 }
 
 // Singleton socket instance
@@ -114,6 +125,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const pageUpdateCallbackRef = useRef<((update: PageUpdate) => void) | null>(null);
   const pageCreatedCallbackRef = useRef<((data: { pageId: number; title: string }) => void) | null>(null);
   const pageDeletedCallbackRef = useRef<((data: { pageId: number; title: string }) => void) | null>(null);
+  const notificationCallbackRef = useRef<((notification: NotificationEvent) => void) | null>(null);
   const currentPageRef = useRef<number | null>(null);
 
   // Initialize connection
@@ -187,6 +199,13 @@ export function useWebSocket(): UseWebSocketReturn {
           }
         });
 
+        // Listen for real-time notifications
+        s.on("notification", (notification: NotificationEvent) => {
+          if (notificationCallbackRef.current) {
+            notificationCallbackRef.current(notification);
+          }
+        });
+
         s.on("connect", () => setIsConnected(true));
         s.on("disconnect", () => setIsConnected(false));
       })
@@ -256,6 +275,11 @@ export function useWebSocket(): UseWebSocketReturn {
     pageDeletedCallbackRef.current = callback;
   }, []);
 
+  // Register notification callback
+  const onNotification = useCallback((callback: (notification: NotificationEvent) => void) => {
+    notificationCallbackRef.current = callback;
+  }, []);
+
   return {
     isConnected,
     presence,
@@ -268,6 +292,7 @@ export function useWebSocket(): UseWebSocketReturn {
     onPageUpdate,
     onPageCreated,
     onPageDeleted,
+    onNotification,
   };
 }
 

@@ -418,6 +418,16 @@ export const appRouter = router({
           details: { title: input.title || page.title },
         });
         
+        // Notify page author about the update
+        await db.notifyPageAuthor(
+          id,
+          ctx.user.id,
+          "page_updated",
+          `Страница "${input.title || page.title}" была отредактирована`,
+          `${ctx.user.name || 'Пользователь'} внёс изменения в вашу страницу`,
+          { changeDescription: changeDescription || "Updated content" }
+        );
+        
         return { success: true };
       }),
     
@@ -1110,6 +1120,78 @@ export const appRouter = router({
         });
 
         return { url, fileName: `${rootPage.title}-export.pdf`, pageCount: pagesToExport.length };
+      }),
+  }),
+
+  // ============ NOTIFICATIONS ============
+  notifications: router({
+    // Get user notifications
+    list: protectedProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(100).default(50),
+        offset: z.number().min(0).default(0),
+        unreadOnly: z.boolean().default(false),
+      }).optional())
+      .query(async ({ input, ctx }) => {
+        const notifications = await db.getUserNotifications(ctx.user.id, input);
+        const unreadCount = await db.getUnreadNotificationCount(ctx.user.id);
+        return { notifications, unreadCount };
+      }),
+
+    // Get unread count only
+    unreadCount: protectedProcedure.query(async ({ ctx }) => {
+      return db.getUnreadNotificationCount(ctx.user.id);
+    }),
+
+    // Mark single notification as read
+    markAsRead: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await db.markNotificationAsRead(input.id, ctx.user.id);
+        return { success: true };
+      }),
+
+    // Mark all notifications as read
+    markAllAsRead: protectedProcedure.mutation(async ({ ctx }) => {
+      await db.markAllNotificationsAsRead(ctx.user.id);
+      return { success: true };
+    }),
+
+    // Delete notification
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await db.deleteNotification(input.id, ctx.user.id);
+        return { success: true };
+      }),
+
+    // Get notification preferences
+    getPreferences: protectedProcedure.query(async ({ ctx }) => {
+      const prefs = await db.getNotificationPreferences(ctx.user.id);
+      // Return defaults if no preferences set
+      return prefs || {
+        emailEnabled: true,
+        pageUpdates: true,
+        pageComments: true,
+        mentions: true,
+        accessRequests: true,
+        systemNotifications: true,
+      };
+    }),
+
+    // Update notification preferences
+    updatePreferences: protectedProcedure
+      .input(z.object({
+        emailEnabled: z.boolean().optional(),
+        pageUpdates: z.boolean().optional(),
+        pageComments: z.boolean().optional(),
+        mentions: z.boolean().optional(),
+        accessRequests: z.boolean().optional(),
+        systemNotifications: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.upsertNotificationPreferences(ctx.user.id, input);
+        return { success: true };
       }),
   }),
 });

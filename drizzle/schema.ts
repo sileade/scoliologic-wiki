@@ -363,3 +363,78 @@ export const pageTemplatesRelations = relations(pageTemplates, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+
+/**
+ * User notifications for page changes and system events
+ */
+export const notifications = mysqlTable("notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(), // recipient
+  type: mysqlEnum("type", [
+    "page_updated",      // Someone edited your page
+    "page_commented",    // Someone commented on your page
+    "page_shared",       // Someone shared a page with you
+    "mention",           // Someone mentioned you
+    "access_granted",    // Access to a page was granted
+    "access_requested",  // Someone requested access to your page
+    "system"             // System notification
+  ]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message"),
+  pageId: int("pageId"),           // Related page (if applicable)
+  actorId: int("actorId"),         // User who triggered the notification
+  isRead: boolean("isRead").default(false).notNull(),
+  readAt: timestamp("readAt"),
+  metadata: json("metadata"),       // Additional data (e.g., diff summary)
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("notification_user_idx").on(table.userId),
+  index("notification_read_idx").on(table.userId, table.isRead),
+  index("notification_page_idx").on(table.pageId),
+]);
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;
+
+/**
+ * User notification preferences
+ */
+export const notificationPreferences = mysqlTable("notification_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  emailEnabled: boolean("emailEnabled").default(true).notNull(),
+  pageUpdates: boolean("pageUpdates").default(true).notNull(),      // Notify when my pages are edited
+  pageComments: boolean("pageComments").default(true).notNull(),    // Notify when my pages are commented
+  mentions: boolean("mentions").default(true).notNull(),            // Notify when I'm mentioned
+  accessRequests: boolean("accessRequests").default(true).notNull(), // Notify on access requests
+  systemNotifications: boolean("systemNotifications").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreference = typeof notificationPreferences.$inferInsert;
+
+// Relations for notifications
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+  actor: one(users, {
+    fields: [notifications.actorId],
+    references: [users.id],
+  }),
+  page: one(pages, {
+    fields: [notifications.pageId],
+    references: [pages.id],
+  }),
+}));
+
+export const notificationPreferencesRelations = relations(notificationPreferences, ({ one }) => ({
+  user: one(users, {
+    fields: [notificationPreferences.userId],
+    references: [users.id],
+  }),
+}));

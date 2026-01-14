@@ -8,6 +8,7 @@ import Home from "./pages/Home";
 import Wiki from "./pages/Wiki";
 import Search from "./pages/Search";
 import Admin from "./pages/Admin";
+import NotificationSettings from "./pages/NotificationSettings";
 
 function Router() {
   return (
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/search" component={Search} />
       <Route path="/admin" component={Admin} />
       <Route path="/admin/:section" component={Admin} />
+      <Route path="/settings/notifications" component={NotificationSettings} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

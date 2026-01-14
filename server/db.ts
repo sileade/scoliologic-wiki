@@ -13,7 +13,9 @@ import {
   InsertSystemSetting, systemSettings,
   InsertAccessRequest, accessRequests,
   InsertPageTemplate, pageTemplates,
-  User, Group, Page, PageVersion, PagePermission
+  InsertNotification, notifications,
+  InsertNotificationPreference, notificationPreferences,
+  User, Group, Page, PageVersion, PagePermission, Notification, NotificationPreference
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -714,4 +716,245 @@ export async function getTemplateCategories() {
     .where(eq(pageTemplates.isPublic, true))
     .orderBy(asc(pageTemplates.category));
   return result.map(r => r.category).filter(c => c !== null);
+}
+
+
+// ============ NOTIFICATION FUNCTIONS ============
+
+export async function createNotification(data: InsertNotification): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Check user preferences before creating notification
+  const prefs = await getNotificationPreferences(data.userId);
+  if (prefs) {
+    // Check if this type of notification is enabled
+    if (data.type === "page_updated" && !prefs.pageUpdates) return null;
+    if (data.type === "page_commented" && !prefs.pageComments) return null;
+    if (data.type === "mention" && !prefs.mentions) return null;
+    if (data.type === "access_requested" && !prefs.accessRequests) return null;
+    if (data.type === "system" && !prefs.systemNotifications) return null;
+  }
+  
+  const result = await db.insert(notifications).values(data);
+  return result[0]?.insertId || null;
+}
+
+export async function getUserNotifications(userId: number, options?: {
+  limit?: number;
+  offset?: number;
+  unreadOnly?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { limit = 50, offset = 0, unreadOnly = false } = options || {};
+  
+  let query = db.select({
+    id: notifications.id,
+    type: notifications.type,
+    title: notifications.title,
+    message: notifications.message,
+    pageId: notifications.pageId,
+    actorId: notifications.actorId,
+    isRead: notifications.isRead,
+    readAt: notifications.readAt,
+    metadata: notifications.metadata,
+    createdAt: notifications.createdAt,
+    actorName: users.name,
+    actorAvatar: users.avatar,
+  })
+  .from(notifications)
+  .leftJoin(users, eq(notifications.actorId, users.id))
+  .where(
+    unreadOnly 
+      ? and(eq(notifications.userId, userId), eq(notifications.isRead, false))
+      : eq(notifications.userId, userId)
+  )
+  .orderBy(desc(notifications.createdAt))
+  .limit(limit)
+  .offset(offset);
+  
+  return query;
+}
+
+export async function getUnreadNotificationCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  const result = await db.select({ count: sql<number>`count(*)` })
+    .from(notifications)
+    .where(and(
+      eq(notifications.userId, userId),
+      eq(notifications.isRead, false)
+    ));
+  
+  return result[0]?.count || 0;
+}
+
+export async function markNotificationAsRead(notificationId: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db.update(notifications)
+    .set({ isRead: true, readAt: new Date() })
+    .where(and(
+      eq(notifications.id, notificationId),
+      eq(notifications.userId, userId)
+    ));
+  
+  return true;
+}
+
+export async function markAllNotificationsAsRead(userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db.update(notifications)
+    .set({ isRead: true, readAt: new Date() })
+    .where(and(
+      eq(notifications.userId, userId),
+      eq(notifications.isRead, false)
+    ));
+  
+  return true;
+}
+
+export async function deleteNotification(notificationId: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db.delete(notifications)
+    .where(and(
+      eq(notifications.id, notificationId),
+      eq(notifications.userId, userId)
+    ));
+  
+  return true;
+}
+
+export async function deleteOldNotifications(daysOld: number = 30): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+  
+  const result = await db.delete(notifications)
+    .where(sql`${notifications.createdAt} < ${cutoffDate}`);
+  
+  return result[0]?.affectedRows || 0;
+}
+
+// ============ NOTIFICATION PREFERENCES FUNCTIONS ============
+
+export async function getNotificationPreferences(userId: number): Promise<NotificationPreference | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select()
+    .from(notificationPreferences)
+    .where(eq(notificationPreferences.userId, userId))
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+export async function upsertNotificationPreferences(
+  userId: number, 
+  prefs: Partial<Omit<InsertNotificationPreference, "userId">>
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const existing = await getNotificationPreferences(userId);
+  
+  if (existing) {
+    await db.update(notificationPreferences)
+      .set(prefs)
+      .where(eq(notificationPreferences.userId, userId));
+  } else {
+    await db.insert(notificationPreferences).values({
+      userId,
+      ...prefs,
+    });
+  }
+  
+  return true;
+}
+
+// ============ NOTIFICATION HELPER FUNCTIONS ============
+
+export async function notifyPageAuthor(
+  pageId: number,
+  actorId: number,
+  type: "page_updated" | "page_commented",
+  title: string,
+  message?: string,
+  metadata?: Record<string, unknown>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  // Get the page to find the author
+  const page = await getPageById(pageId);
+  if (!page || !page.createdById) return;
+  
+  // Don't notify if the actor is the author
+  if (page.createdById === actorId) return;
+  
+  await createNotification({
+    userId: page.createdById,
+    type,
+    title,
+    message,
+    pageId,
+    actorId,
+    metadata,
+  });
+}
+
+export async function notifyUsersWithPageAccess(
+  pageId: number,
+  actorId: number,
+  type: "page_updated" | "page_commented" | "page_shared",
+  title: string,
+  message?: string,
+  metadata?: Record<string, unknown>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  // Get all users with access to this page
+  const permissions = await db.select({ userId: pagePermissions.userId })
+    .from(pagePermissions)
+    .where(eq(pagePermissions.pageId, pageId));
+  
+  // Also get the page author
+  const page = await getPageById(pageId);
+  const authorId = page?.createdById;
+  
+  // Collect unique user IDs (excluding the actor)
+  const userIds = new Set<number>();
+  if (authorId && authorId !== actorId) {
+    userIds.add(authorId);
+  }
+  for (const perm of permissions) {
+    if (perm.userId && perm.userId !== actorId) {
+      userIds.add(perm.userId);
+    }
+  }
+  
+  // Create notifications for all users
+  for (const userId of Array.from(userIds)) {
+    await createNotification({
+      userId,
+      type,
+      title,
+      message,
+      pageId,
+      actorId,
+      metadata,
+    });
+  }
 }

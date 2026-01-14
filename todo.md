@@ -207,4 +207,16 @@
 - [x] Implement WebSocket notifications for real-time page updates
 - [x] Implement PDF export for wiki pages
 - [x] Update README with new features
+- [x] Push changes to GitHub
+
+
+## Notification System for Page Changes
+- [x] Create notifications table in database schema
+- [x] Add notification preferences to user settings
+- [x] Implement backend API for notifications (create, list, mark as read)
+- [x] Create notification bell UI component with badge
+- [x] Create notifications dropdown/panel
+- [x] Integrate notifications into page update flow
+- [x] Add real-time notifications via WebSocket
+- [x] Update README with notification system documentation
 - [ ] Push changes to GitHub

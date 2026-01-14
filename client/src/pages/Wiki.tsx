@@ -57,6 +57,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getLoginUrl } from "@/const";
+import { NotificationBell } from "@/components/NotificationBell";
 
 interface Page {
   id: number;
@@ -330,6 +331,8 @@ export default function Wiki() {
                   Admin
                 </Button>
               )}
+              
+              <NotificationBell />
               
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

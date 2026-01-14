@@ -352,3 +352,44 @@ export function broadcastToAll(event: string, data: unknown): void {
   if (!io) return;
   io.emit(event, data);
 }
+
+
+/**
+ * Send notification to a specific user
+ */
+export function sendNotificationToUser(userId: number, notification: {
+  id: number;
+  type: string;
+  title: string;
+  message?: string;
+  pageId?: number;
+  actorName?: string;
+  createdAt: Date;
+}): void {
+  if (!io) return;
+  
+  const socketIds = userSockets.get(userId);
+  if (!socketIds || socketIds.size === 0) return;
+  
+  // Send to all sockets of this user
+  for (const socketId of Array.from(socketIds)) {
+    io.to(socketId).emit("notification", notification);
+  }
+}
+
+/**
+ * Send notification to multiple users
+ */
+export function sendNotificationToUsers(userIds: number[], notification: {
+  id: number;
+  type: string;
+  title: string;
+  message?: string;
+  pageId?: number;
+  actorName?: string;
+  createdAt: Date;
+}): void {
+  for (const userId of userIds) {
+    sendNotificationToUser(userId, notification);
+  }
+}
