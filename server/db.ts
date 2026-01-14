@@ -1,6 +1,5 @@
 import { eq, and, or, like, desc, asc, isNull, inArray, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
+import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
   InsertGroup, groups,
@@ -24,16 +23,11 @@ import {
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
-let _pool: pg.Pool | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _pool = new pg.Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
-      });
-      _db = drizzle(_pool);
+      _db = drizzle(process.env.DATABASE_URL);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -94,8 +88,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onConflictDoUpdate({
-      target: users.openId,
+    await db.insert(users).values(values).onDuplicateKeyUpdate({
       set: updateSet,
     });
   } catch (error) {
@@ -135,8 +128,8 @@ export async function updateUserRole(userId: number, role: "user" | "admin" | "g
 export async function createGroup(data: InsertGroup) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(groups).values(data).returning({ id: groups.id });
-  return result[0].id;
+  const result = await db.insert(groups).values(data);
+  return result[0].insertId;
 }
 
 export async function updateGroup(id: number, data: Partial<InsertGroup>) {
@@ -185,16 +178,9 @@ export async function getGroupMembers(groupId: number) {
 export async function addUserToGroup(data: InsertUserGroup) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  // Check if exists first, then insert or update
-  const existing = await db.select().from(userGroups)
-    .where(and(eq(userGroups.userId, data.userId), eq(userGroups.groupId, data.groupId)))
-    .limit(1);
-  if (existing.length > 0) {
-    await db.update(userGroups).set({ role: data.role })
-      .where(and(eq(userGroups.userId, data.userId), eq(userGroups.groupId, data.groupId)));
-  } else {
-    await db.insert(userGroups).values(data);
-  }
+  await db.insert(userGroups).values(data).onDuplicateKeyUpdate({
+    set: { role: data.role }
+  });
 }
 
 export async function removeUserFromGroup(userId: number, groupId: number) {
@@ -225,8 +211,8 @@ export async function getUserGroups(userId: number) {
 export async function createPage(data: InsertPage) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(pages).values(data).returning({ id: pages.id });
-  return result[0].id;
+  const result = await db.insert(pages).values(data);
+  return result[0].insertId;
 }
 
 export async function updatePage(id: number, data: Partial<InsertPage>) {
@@ -540,8 +526,8 @@ export async function getAllEmbeddings() {
 export async function createMediaFile(data: InsertMediaFile) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(mediaFiles).values(data).returning({ id: mediaFiles.id });
-  return result[0].id;
+  const result = await db.insert(mediaFiles).values(data);
+  return result[0].insertId;
 }
 
 export async function getMediaFiles(pageId?: number) {
@@ -599,7 +585,7 @@ export async function setSetting(key: string, value: string, description?: strin
   const db = await getDb();
   if (!db) return;
   await db.insert(systemSettings).values({ key, value, description })
-    .onConflictDoUpdate({ target: systemSettings.key, set: { value, description } });
+    .onDuplicateKeyUpdate({ set: { value, description } });
 }
 
 export async function getAllSettings() {
@@ -613,8 +599,8 @@ export async function getAllSettings() {
 export async function createAccessRequest(data: InsertAccessRequest) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(accessRequests).values(data).returning({ id: accessRequests.id });
-  return result[0].id;
+  const result = await db.insert(accessRequests).values(data);
+  return result[0].insertId;
 }
 
 export async function getPendingAccessRequests() {
@@ -660,8 +646,8 @@ export async function updateAccessRequest(
 export async function createPageTemplate(data: InsertPageTemplate) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(pageTemplates).values(data).returning({ id: pageTemplates.id });
-  return result[0].id;
+  const result = await db.insert(pageTemplates).values(data);
+  return result[0].insertId;
 }
 
 export async function updatePageTemplate(id: number, data: Partial<InsertPageTemplate>) {
@@ -753,8 +739,8 @@ export async function createNotification(data: InsertNotification): Promise<numb
     if (data.type === "system" && !prefs.systemNotifications) return null;
   }
   
-  const result = await db.insert(notifications).values(data).returning({ id: notifications.id });
-  return result[0]?.id || null;
+  const result = await db.insert(notifications).values(data);
+  return result[0]?.insertId || null;
 }
 
 export async function getUserNotifications(userId: number, options?: {
@@ -860,7 +846,7 @@ export async function deleteOldNotifications(daysOld: number = 30): Promise<numb
   const result = await db.delete(notifications)
     .where(sql`${notifications.createdAt} < ${cutoffDate}`);
   
-  return result.rowCount || 0;
+  return result[0]?.affectedRows || 0;
 }
 
 // ============ NOTIFICATION PREFERENCES FUNCTIONS ============
@@ -999,9 +985,9 @@ export async function addToFavorites(userId: number, pageId: number): Promise<{ 
   const result = await db.insert(favorites).values({
     userId,
     pageId,
-  }).returning({ id: favorites.id });
+  });
   
-  return { id: result[0].id };
+  return { id: Number(result[0].insertId) };
 }
 
 /**
@@ -1082,8 +1068,8 @@ export async function getUserFavoritePageIds(userId: number): Promise<number[]> 
 export async function createTag(data: InsertTag): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(tags).values(data).returning({ id: tags.id });
-  return result[0].id;
+  const result = await db.insert(tags).values(data);
+  return result[0].insertId;
 }
 
 export async function updateTag(id: number, data: Partial<InsertTag>) {
