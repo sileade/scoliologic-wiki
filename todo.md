@@ -79,3 +79,41 @@
 - [x] Add RuTube video embedding support
 - [x] Video player component in editor
 - [x] Video toolbar button in WikiEditor
+- [x] Add YouTube video embedding support
+- [x] Add VK Video embedding support
+
+
+## Extended Video Support
+- [x] Add YouTube video embedding support
+- [x] Add VK Video embedding support
+- [x] Video preview before insertion
+
+## Enhanced Search Features
+- [x] Improve full-text search with better ranking
+- [x] Add AI-powered semantic search via Ollama
+- [x] Search suggestions and autocomplete
+- [x] Search filters (by date, author, category)
+- [x] Search result highlighting
+
+## AI Writing Assistant Enhancement (Local Ollama)
+- [x] AI article generation from topic/outline
+- [x] Smart formatting suggestions
+- [x] Auto-structure detection and improvement
+- [x] Translation assistance
+- [x] Content summarization
+- [x] SEO optimization suggestions
+
+## Local AI Infrastructure
+- [x] Ollama integration for embeddings
+- [x] Local LLM for text generation
+- [x] Vector database for semantic search
+- [x] Embedding caching system
+
+## Docker Compose Deployment
+- [x] Complete docker-compose.yml with all services
+- [x] Ollama service configuration
+- [x] MinIO S3 storage setup
+- [x] PostgreSQL database
+- [x] Traefik reverse proxy
+- [x] Environment configuration
+- [x] One-click deployment script

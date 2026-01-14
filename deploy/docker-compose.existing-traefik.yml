@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: wiki-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-scoliologic_wiki}
+      POSTGRES_USER: ${DB_USER:-wiki}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wiki}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # MinIO S3 Storage
+  minio:
+    image: minio/minio:latest
+    container_name: wiki-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # Ollama AI Model Server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: wiki-ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # Wiki Application
+  app:
+    build:
+      context: .
+      dockerfile: ./deploy/Dockerfile
+    container_name: wiki-app
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DB_USER:-wiki}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-scoliologic_wiki}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-me}
+      VITE_APP_ID: ${VITE_APP_ID}
+      VITE_APP_TITLE: ${VITE_APP_TITLE:-Scoliologic Wiki}
+      VITE_APP_LOGO: ${VITE_APP_LOGO}
+      OAUTH_SERVER_URL: ${OAUTH_SERVER_URL}
+      VITE_OAUTH_PORTAL_URL: ${VITE_OAUTH_PORTAL_URL}
+      OWNER_OPEN_ID: ${OWNER_OPEN_ID}
+      OWNER_NAME: ${OWNER_NAME}
+      BUILT_IN_FORGE_API_URL: ${BUILT_IN_FORGE_API_URL}
+      BUILT_IN_FORGE_API_KEY: ${BUILT_IN_FORGE_API_KEY}
+      VITE_FRONTEND_FORGE_API_URL: ${VITE_FRONTEND_FORGE_API_URL}
+      VITE_FRONTEND_FORGE_API_KEY: ${VITE_FRONTEND_FORGE_API_KEY}
+      VITE_ANALYTICS_ENDPOINT: ${VITE_ANALYTICS_ENDPOINT}
+      VITE_ANALYTICS_WEBSITE_ID: ${VITE_ANALYTICS_WEBSITE_ID}
+      # S3 Storage
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_S3_ENDPOINT: http://minio:9000
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-wiki-storage}
+      AWS_REGION: us-east-1
+      # Ollama AI
+      OLLAMA_BASE_URL: http://ollama:11434
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      LLM_MODEL: ${LLM_MODEL:-mistral}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wiki.rule=Host(\`${WIKI_DOMAIN:-wiki.localhost}\`)"
+      - "traefik.http.routers.wiki.entrypoints=web,websecure"
+      - "traefik.http.routers.wiki.tls=true"
+      - "traefik.http.services.wiki.loadbalancer.server.port=3000"
+
+volumes:
+  postgres_data:
+    driver: local
+  minio_data:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  wiki-network:
+    driver: bridge
+    external: false

@@ -486,7 +486,7 @@ export function WikiEditor({
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => setShowVideoDialog(true)}>
                 <LinkIcon className="h-4 w-4 mr-2" />
-                Insert from URL (RuTube / S3)
+                Insert from URL (YouTube / RuTube / VK / S3)
               </DropdownMenuItem>
               {onVideoUpload && (
                 <DropdownMenuItem onClick={handleVideoUpload}>
@@ -555,9 +555,11 @@ export function WikiEditor({
             </DialogDescription>
           </DialogHeader>
           <Tabs defaultValue="url" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="url">Video URL</TabsTrigger>
+              <TabsTrigger value="youtube">YouTube</TabsTrigger>
               <TabsTrigger value="rutube">RuTube</TabsTrigger>
+              <TabsTrigger value="vk">VK Video</TabsTrigger>
             </TabsList>
             <TabsContent value="url" className="space-y-4">
               <div className="space-y-2">
@@ -576,6 +578,32 @@ export function WikiEditor({
                 <Label htmlFor="video-title">Title (optional)</Label>
                 <Input
                   id="video-title"
+                  placeholder="Video description"
+                  value={videoTitle}
+                  onChange={(e) => setVideoTitle(e.target.value)}
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value="youtube" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="youtube-url">YouTube Video URL</Label>
+                <Input
+                  id="youtube-url"
+                  placeholder="https://youtube.com/watch?v=dQw4w9WgXcQ"
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Paste the YouTube video URL. Supported formats:
+                  <br />• youtube.com/watch?v=VIDEO_ID
+                  <br />• youtu.be/VIDEO_ID
+                  <br />• youtube.com/shorts/VIDEO_ID
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="youtube-title">Title (optional)</Label>
+                <Input
+                  id="youtube-title"
                   placeholder="Video description"
                   value={videoTitle}
                   onChange={(e) => setVideoTitle(e.target.value)}
@@ -601,6 +629,31 @@ export function WikiEditor({
                 <Label htmlFor="rutube-title">Title (optional)</Label>
                 <Input
                   id="rutube-title"
+                  placeholder="Video description"
+                  value={videoTitle}
+                  onChange={(e) => setVideoTitle(e.target.value)}
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value="vk" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="vk-url">VK Video URL</Label>
+                <Input
+                  id="vk-url"
+                  placeholder="https://vk.com/video-123456_789012"
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Paste the VK video URL. Supported formats:
+                  <br />• vk.com/video-OWNER_ID_VIDEO_ID
+                  <br />• vk.com/clip-OWNER_ID_VIDEO_ID
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="vk-title">Title (optional)</Label>
+                <Input
+                  id="vk-title"
                   placeholder="Video description"
                   value={videoTitle}
                   onChange={(e) => setVideoTitle(e.target.value)}
