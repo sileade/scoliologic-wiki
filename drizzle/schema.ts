@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean, index } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json, index, boolean } from "drizzle-orm/mysql-core";
 import { relations } from "drizzle-orm";
 
 /**
@@ -215,12 +215,35 @@ export const accessRequests = mysqlTable("access_requests", {
 export type AccessRequest = typeof accessRequests.$inferSelect;
 export type InsertAccessRequest = typeof accessRequests.$inferInsert;
 
+/**
+ * Page templates for quick page creation
+ */
+export const pageTemplates = mysqlTable("page_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 100 }).default("general"),
+  content: json("content").notNull(),
+  icon: varchar("icon", { length: 100 }).default("file-text"),
+  isPublic: boolean("isPublic").default(true),
+  createdById: int("createdById").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("template_category_idx").on(table.category),
+  index("template_creator_idx").on(table.createdById),
+]);
+
+export type PageTemplate = typeof pageTemplates.$inferSelect;
+export type InsertPageTemplate = typeof pageTemplates.$inferInsert;
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   userGroups: many(userGroups),
   createdPages: many(pages),
   mediaFiles: many(mediaFiles),
   activityLogs: many(activityLogs),
+  pageTemplates: many(pageTemplates),
 }));
 
 export const groupsRelations = relations(groups, ({ many, one }) => ({
@@ -330,6 +353,13 @@ export const accessRequestsRelations = relations(accessRequests, ({ one }) => ({
   }),
   reviewedBy: one(users, {
     fields: [accessRequests.reviewedById],
+    references: [users.id],
+  }),
+}));
+
+export const pageTemplatesRelations = relations(pageTemplates, ({ one }) => ({
+  createdBy: one(users, {
+    fields: [pageTemplates.createdById],
     references: [users.id],
   }),
 }));

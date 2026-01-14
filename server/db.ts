@@ -1,4 +1,4 @@
-import { eq, and, or, desc, asc, isNull, sql, like, inArray } from "drizzle-orm";
+import { eq, and, or, like, desc, asc, isNull, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -12,6 +12,7 @@ import {
   InsertActivityLog, activityLogs,
   InsertSystemSetting, systemSettings,
   InsertAccessRequest, accessRequests,
+  InsertPageTemplate, pageTemplates,
   User, Group, Page, PageVersion, PagePermission
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -560,4 +561,84 @@ export async function updateAccessRequest(
     reviewedById,
     reviewedAt: new Date(),
   }).where(eq(accessRequests.id, id));
+}
+
+// ============ PAGE TEMPLATE FUNCTIONS ============
+
+export async function createPageTemplate(data: InsertPageTemplate) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(pageTemplates).values(data);
+  return result[0].insertId;
+}
+
+export async function updatePageTemplate(id: number, data: Partial<InsertPageTemplate>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(pageTemplates).set(data).where(eq(pageTemplates.id, id));
+}
+
+export async function deletePageTemplate(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(pageTemplates).where(eq(pageTemplates.id, id));
+}
+
+export async function getPageTemplateById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(pageTemplates).where(eq(pageTemplates.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getPageTemplates(category?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  let query = db.select({
+    id: pageTemplates.id,
+    name: pageTemplates.name,
+    description: pageTemplates.description,
+    category: pageTemplates.category,
+    icon: pageTemplates.icon,
+    isPublic: pageTemplates.isPublic,
+    createdAt: pageTemplates.createdAt,
+    createdByName: users.name,
+  })
+    .from(pageTemplates)
+    .leftJoin(users, eq(pageTemplates.createdById, users.id));
+  
+  if (category) {
+    query = query.where(eq(pageTemplates.category, category)) as any;
+  }
+  
+  return query.orderBy(asc(pageTemplates.name));
+}
+
+export async function getPublicPageTemplates() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: pageTemplates.id,
+    name: pageTemplates.name,
+    description: pageTemplates.description,
+    category: pageTemplates.category,
+    icon: pageTemplates.icon,
+    createdAt: pageTemplates.createdAt,
+    createdByName: users.name,
+  })
+    .from(pageTemplates)
+    .leftJoin(users, eq(pageTemplates.createdById, users.id))
+    .where(eq(pageTemplates.isPublic, true))
+    .orderBy(asc(pageTemplates.category), asc(pageTemplates.name));
+}
+
+export async function getTemplateCategories() {
+  const db = await getDb();
+  if (!db) return [];
+  const result = await db.selectDistinct({ category: pageTemplates.category })
+    .from(pageTemplates)
+    .where(eq(pageTemplates.isPublic, true))
+    .orderBy(asc(pageTemplates.category));
+  return result.map(r => r.category).filter(c => c !== null);
 }

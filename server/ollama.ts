@@ -230,3 +230,115 @@ export async function semanticSearch(
     return [];
   }
 }
+
+
+/**
+ * Auto-correct formatting and structure of text
+ */
+export async function autoCorrectFormat(text: string): Promise<string> {
+  const prompt = `Please fix the formatting and structure of the following text. Ensure proper punctuation, capitalization, and paragraph breaks. Only return the corrected text:
+
+${text}`;
+
+  return generateText(prompt, { temperature: 0.2, maxTokens: 1024 });
+}
+
+/**
+ * Adjust tone of text
+ */
+export async function adjustTone(
+  text: string,
+  tone: "formal" | "casual" | "technical" | "friendly"
+): Promise<string> {
+  const toneDescriptions: Record<string, string> = {
+    formal: "formal and professional",
+    casual: "casual and conversational",
+    technical: "technical and precise",
+    friendly: "friendly and approachable",
+  };
+
+  const prompt = `Please rewrite the following text in a ${toneDescriptions[tone]} tone. Maintain the original meaning and information:
+
+${text}`;
+
+  return generateText(prompt, { temperature: 0.5, maxTokens: 1024 });
+}
+
+/**
+ * Generate outline from content
+ */
+export async function generateOutline(content: string): Promise<string> {
+  const prompt = `Based on the following content, generate a clear and organized outline with main sections and subsections. Format as a numbered list:
+
+${content}`;
+
+  return generateText(prompt, { temperature: 0.3, maxTokens: 512 });
+}
+
+/**
+ * Generate content from outline
+ */
+export async function generateFromOutline(outline: string, topic: string): Promise<string> {
+  const prompt = `Write a comprehensive article about "${topic}" following this outline:
+
+${outline}
+
+Make it well-structured, informative, and professional.`;
+
+  return generateText(prompt, { temperature: 0.6, maxTokens: 2048 });
+}
+
+/**
+ * Check grammar and provide suggestions
+ */
+export async function checkGrammar(text: string): Promise<{ corrected: string; suggestions: string[] }> {
+  const prompt = `Analyze the following text for grammar, spelling, and style issues. Provide:
+1. A corrected version
+2. A list of issues found and suggestions
+
+Text: ${text}
+
+Respond in JSON format: {"corrected": "...", "suggestions": ["..."]}`;
+
+  const response = await generateText(prompt, { temperature: 0.2, maxTokens: 512 });
+
+  try {
+    const parsed = JSON.parse(response);
+    return {
+      corrected: parsed.corrected || text,
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+    };
+  } catch {
+    return { corrected: text, suggestions: [] };
+  }
+}
+
+/**
+ * Generate keywords/tags from content
+ */
+export async function generateKeywords(content: string, maxKeywords: number = 10): Promise<string[]> {
+  const prompt = `Extract the top ${maxKeywords} most relevant keywords or tags from the following content. Return only the keywords as a JSON array:
+
+${content}
+
+Respond in JSON format: ["keyword1", "keyword2", ...]`;
+
+  const response = await generateText(prompt, { temperature: 0.2, maxTokens: 256 });
+
+  try {
+    return JSON.parse(response);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Condense text to specific length
+ */
+export async function condenseText(text: string, targetLength: number): Promise<string> {
+  const prompt = `Please condense the following text to approximately ${targetLength} words while preserving the key information:
+
+${text}`;
+
+  return generateText(prompt, { temperature: 0.3, maxTokens: Math.ceil(targetLength * 1.5) });
+}

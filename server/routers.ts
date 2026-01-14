@@ -716,6 +716,67 @@ export const appRouter = router({
           completion: response.choices[0]?.message?.content || "",
         };
       }),
+    
+    autoCorrectFormat: protectedProcedure
+      .input(z.object({ text: z.string() }))
+      .mutation(async ({ input }) => {
+        const corrected = await ollama.autoCorrectFormat(input.text);
+        return { corrected };
+      }),
+    
+    adjustTone: protectedProcedure
+      .input(z.object({
+        text: z.string(),
+        tone: z.enum(["formal", "casual", "technical", "friendly"]),
+      }))
+      .mutation(async ({ input }) => {
+        const adjusted = await ollama.adjustTone(input.text, input.tone);
+        return { adjusted };
+      }),
+    
+    generateOutline: protectedProcedure
+      .input(z.object({ content: z.string() }))
+      .mutation(async ({ input }) => {
+        const outline = await ollama.generateOutline(input.content);
+        return { outline };
+      }),
+    
+    generateFromOutline: protectedProcedure
+      .input(z.object({
+        outline: z.string(),
+        topic: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const content = await ollama.generateFromOutline(input.outline, input.topic);
+        return { content };
+      }),
+    
+    checkGrammar: protectedProcedure
+      .input(z.object({ text: z.string() }))
+      .mutation(async ({ input }) => {
+        const result = await ollama.checkGrammar(input.text);
+        return result;
+      }),
+    
+    generateKeywords: protectedProcedure
+      .input(z.object({
+        content: z.string(),
+        maxKeywords: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const keywords = await ollama.generateKeywords(input.content, input.maxKeywords);
+        return { keywords };
+      }),
+    
+    condenseText: protectedProcedure
+      .input(z.object({
+        text: z.string(),
+        targetLength: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const condensed = await ollama.condenseText(input.text, input.targetLength);
+        return { condensed };
+      }),
   }),
 
   // ============ MEDIA FILES ============

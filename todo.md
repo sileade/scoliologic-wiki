@@ -117,3 +117,41 @@
 - [x] Traefik reverse proxy
 - [x] Environment configuration
 - [x] One-click deployment script
+
+
+## Export & Templates Features
+- [x] Export articles to PDF format
+- [x] Export articles to Markdown format
+- [x] Batch export functionality
+- [x] Page templates system
+- [x] Template management (create, edit, delete)
+- [x] Template categories
+- [x] Quick page creation from templates
+
+
+## Theme & UI Enhancements
+- [x] Dark theme implementation
+- [x] System theme detection (prefers-color-scheme)
+- [x] Manual theme toggle in UI
+- [x] Theme persistence in localStorage
+- [x] Smooth theme transitions
+
+## Advanced Text Formatting (Notion-like)
+- [x] Auto-formatting on text input (markdown shortcuts)
+- [x] Smart list detection and conversion
+- [x] Auto-heading detection (# syntax)
+- [x] Auto-quote formatting (> syntax)
+- [x] Auto-code block formatting (``` syntax)
+- [x] Smart text replacement (arrows, dashes, etc.)
+- [ ] Drag-and-drop block reordering
+- [x] Block type conversion menu
+
+## Enhanced AI Tools
+- [x] Auto-format correction via AI
+- [x] Grammar and spelling check
+- [x] Tone adjustment (formal, casual, technical)
+- [x] Content expansion/condensation
+- [x] Outline generation from content
+- [x] Article generation from outline
+- [x] SEO optimization suggestions
+- [ ] Plagiarism check integration

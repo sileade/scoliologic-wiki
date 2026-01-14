@@ -15,6 +15,13 @@
       "when": 1768369247007,
       "tag": "0001_legal_meltdown",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1768372737169,
+      "tag": "0002_nebulous_glorian",
+      "breakpoints": true
     }
   ]
 }
