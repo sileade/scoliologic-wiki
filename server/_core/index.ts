@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { generalLimiter, aiLimiter, authLimiter, searchLimiter } from "../middleware/rateLimit";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -33,6 +34,12 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // Rate limiting
+  app.use("/api/trpc", generalLimiter);
+  app.use("/api/trpc/ai", aiLimiter);
+  app.use("/api/trpc/pages.search", searchLimiter);
+  app.use("/api/oauth", authLimiter);
+  
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

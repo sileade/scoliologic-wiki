@@ -220,20 +220,18 @@ export const appRouter = router({
       if (ctx.user.role === "admin") {
         return db.getAllPages();
       }
-      // Regular user: filter by permissions
+      // Regular user: filter by permissions using batch query (optimized)
       const allPages = await db.getAllPages();
-      const accessiblePages = [];
-      for (const page of allPages) {
-        if (page.isPublic) {
-          accessiblePages.push(page);
-          continue;
-        }
-        const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
-        if (perm) {
-          accessiblePages.push(page);
-        }
-      }
-      return accessiblePages;
+      const privatePages = allPages.filter(p => !p.isPublic);
+      const privatePageIds = privatePages.map(p => p.id);
+      
+      // Single batch query instead of N+1
+      const permissions = await db.checkUserPagePermissionsBatch(ctx.user.id, privatePageIds);
+      
+      return allPages.filter(page => {
+        if (page.isPublic) return true;
+        return permissions.get(page.id) !== null;
+      });
     }),
     
     getRootPages: publicProcedure.query(async ({ ctx }) => {
@@ -244,18 +242,15 @@ export const appRouter = router({
       if (ctx.user.role === "admin") {
         return rootPages;
       }
-      const accessiblePages = [];
-      for (const page of rootPages) {
-        if (page.isPublic) {
-          accessiblePages.push(page);
-          continue;
-        }
-        const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
-        if (perm) {
-          accessiblePages.push(page);
-        }
-      }
-      return accessiblePages;
+      // Batch permission check (optimized)
+      const privatePages = rootPages.filter(p => !p.isPublic);
+      const privatePageIds = privatePages.map(p => p.id);
+      const permissions = await db.checkUserPagePermissionsBatch(ctx.user.id, privatePageIds);
+      
+      return rootPages.filter(page => {
+        if (page.isPublic) return true;
+        return permissions.get(page.id) !== null;
+      });
     }),
     
     getChildren: publicProcedure
@@ -268,18 +263,15 @@ export const appRouter = router({
         if (ctx.user.role === "admin") {
           return children;
         }
-        const accessiblePages = [];
-        for (const page of children) {
-          if (page.isPublic) {
-            accessiblePages.push(page);
-            continue;
-          }
-          const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
-          if (perm) {
-            accessiblePages.push(page);
-          }
-        }
-        return accessiblePages;
+        // Batch permission check (optimized)
+        const privatePages = children.filter(p => !p.isPublic);
+        const privatePageIds = privatePages.map(p => p.id);
+        const permissions = await db.checkUserPagePermissionsBatch(ctx.user.id, privatePageIds);
+        
+        return children.filter(page => {
+          if (page.isPublic) return true;
+          return permissions.get(page.id) !== null;
+        });
       }),
     
     getById: publicProcedure
@@ -478,18 +470,15 @@ export const appRouter = router({
         if (ctx.user.role === "admin") {
           return results;
         }
-        const accessibleResults = [];
-        for (const page of results) {
-          if (page.isPublic) {
-            accessibleResults.push(page);
-            continue;
-          }
-          const perm = await db.checkUserPagePermission(ctx.user.id, page.id);
-          if (perm) {
-            accessibleResults.push(page);
-          }
-        }
-        return accessibleResults;
+        // Batch permission check (optimized)
+        const privatePages = results.filter(p => !p.isPublic);
+        const privatePageIds = privatePages.map(p => p.id);
+        const permissions = await db.checkUserPagePermissionsBatch(ctx.user.id, privatePageIds);
+        
+        return results.filter(page => {
+          if (page.isPublic) return true;
+          return permissions.get(page.id) !== null;
+        });
       }),
     
     // Permissions

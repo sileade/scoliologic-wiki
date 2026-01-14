@@ -173,3 +173,22 @@
 - [x] Time spent on pages
 - [x] Analytics dashboard in admin panel
 - [ ] Export analytics reports
+
+
+## GitHub Repository Tasks
+- [x] Create private GitHub repository for Scoliologic Wiki
+- [x] Prepare project files for upload
+- [x] Upload project to GitHub
+- [x] Write detailed README.md with screenshots
+- [x] Add screenshots to repository
+
+
+## Code Quality Improvements (5-Star Target)
+- [x] Optimize N+1 queries in permission checks (batch query)
+- [x] Refactor routers.ts into separate modules (pages, users, groups, ai, admin)
+- [x] Add rate limiting for API endpoints
+- [x] Optimize AI embedding generation (parallel processing)
+- [x] Add more unit tests for db.ts functions
+- [x] Add integration tests for permission system
+- [x] Add input sanitization utilities
+- [x] Improve error handling consistency

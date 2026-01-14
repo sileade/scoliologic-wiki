@@ -407,6 +407,79 @@ export async function checkUserPagePermission(
   return "read";
 }
 
+/**
+ * Batch check user permissions for multiple pages
+ * Optimized to avoid N+1 queries
+ */
+export async function checkUserPagePermissionsBatch(
+  userId: number,
+  pageIds: number[]
+): Promise<Map<number, "admin" | "edit" | "read" | null>> {
+  const result = new Map<number, "admin" | "edit" | "read" | null>();
+  
+  if (pageIds.length === 0) return result;
+  
+  const db = await getDb();
+  if (!db) {
+    pageIds.forEach(id => result.set(id, null));
+    return result;
+  }
+
+  // Get all direct user permissions for these pages in one query
+  const userPerms = await db.select()
+    .from(pagePermissions)
+    .where(and(
+      inArray(pagePermissions.pageId, pageIds),
+      eq(pagePermissions.userId, userId)
+    ));
+
+  // Get user's group IDs
+  const userGroupIds = await db.select({ groupId: userGroups.groupId })
+    .from(userGroups)
+    .where(eq(userGroups.userId, userId));
+
+  const groupIds = userGroupIds.map(g => g.groupId);
+
+  // Get all group permissions for these pages in one query
+  let groupPerms: typeof userPerms = [];
+  if (groupIds.length > 0) {
+    groupPerms = await db.select()
+      .from(pagePermissions)
+      .where(and(
+        inArray(pagePermissions.pageId, pageIds),
+        inArray(pagePermissions.groupId!, groupIds)
+      ));
+  }
+
+  // Build permission map
+  for (const pageId of pageIds) {
+    // Check direct user permission first
+    const directPerm = userPerms.find(p => p.pageId === pageId);
+    if (directPerm) {
+      result.set(pageId, directPerm.permission);
+      continue;
+    }
+
+    // Check group permissions
+    const pageGroupPerms = groupPerms.filter(p => p.pageId === pageId);
+    if (pageGroupPerms.length === 0) {
+      result.set(pageId, null);
+      continue;
+    }
+
+    // Return highest permission
+    if (pageGroupPerms.some(p => p.permission === "admin")) {
+      result.set(pageId, "admin");
+    } else if (pageGroupPerms.some(p => p.permission === "edit")) {
+      result.set(pageId, "edit");
+    } else {
+      result.set(pageId, "read");
+    }
+  }
+
+  return result;
+}
+
 // ============ EMBEDDING FUNCTIONS ============
 
 export async function savePageEmbeddings(pageId: number, chunks: { text: string; embedding: number[] }[]) {
