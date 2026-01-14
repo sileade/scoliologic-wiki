@@ -62,6 +62,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 
 export default function Admin() {
   const [, setLocation] = useLocation();
@@ -224,6 +225,10 @@ export default function Admin() {
             <TabsTrigger value="activity">
               <Activity className="h-4 w-4 mr-2" />
               Activity Log
+            </TabsTrigger>
+            <TabsTrigger value="analytics">
+              <Activity className="h-4 w-4 mr-2" />
+              Analytics
             </TabsTrigger>
           </TabsList>
           
@@ -624,6 +629,11 @@ export default function Admin() {
                 </ScrollArea>
               </CardContent>
             </Card>
+          </TabsContent>
+          
+          {/* Analytics Tab */}
+          <TabsContent value="analytics">
+            <AnalyticsDashboard />
           </TabsContent>
         </Tabs>
       </main>
