@@ -1,0 +1,27 @@
+{
+  "query": "SELECT * FROM pages;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3FbHQcBqwdUAeZd.9ab668b251a8 --database Wxqx3mZtA4ULmxZKr8MEpm --execute SELECT * FROM pages;",
+  "rows": [
+    {
+      "id": "1",
+      "title": "Добро пожаловать в Scoliologic Wiki",
+      "slug": "-scoliologic-wiki-gh4mEb",
+      "content": "<p>Добро пожаловать в корпоративную базу знаний группы компаний Scoliologic!</p><p></p><p>Эта wiki-система предоставляет удобный инструмент для создания, организации и поиска документации с поддержкой искусственного интеллекта.</p>",
+      "contentJson": "{\"content\": [{\"attrs\": {\"textAlign\": null}, \"content\": [{\"text\": \"Добро пожаловать в корпоративную базу знаний группы компаний Scoliologic!\", \"type\": \"text\"}], \"type\": \"paragraph\"}, {\"attrs\": {\"textAlign\": null}, \"type\": \"paragraph\"}, {\"attrs\": {\"textAlign\": null}, \"content\": [{\"text\": \"Эта wiki-система предоставляет удобный инструмент для создания, организации и поиска документации с поддержкой искусственного интеллекта.\", \"type\": \"text\"}], \"type\": \"paragraph\"}], \"type\": \"doc\"}",
+      "icon": "NULL",
+      "coverImage": "NULL",
+      "parentId": "NULL",
+      "order": "0",
+      "isPublic": "1",
+      "isArchived": "0",
+      "createdById": "1",
+      "lastEditedById": "1",
+      "createdAt": "2026-01-14 05:56:38",
+      "updatedAt": "2026-01-14 05:57:24"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttitle\tslug\tcontent\tcontentJson\ticon\tcoverImage\tparentId\torder\tisPublic\tisArchived\tcreatedById\tlastEditedById\tcreatedAt\tupdatedAt\n1\tДобро пожаловать в Scoliologic Wiki\t-scoliologic-wiki-gh4mEb\t<p>Добро пожаловать в корпоративную базу знаний группы компаний Scoliologic!</p><p></p><p>Эта wiki-система предоставляет удобный инструмент для создания, организации и поиска документации с поддержкой искусственного интеллекта.</p>\t{\"content\": [{\"attrs\": {\"textAlign\": null}, \"content\": [{\"text\": \"Добро пожаловать в корпоративную базу знаний группы компаний Scoliologic!\", \"type\": \"text\"}], \"type\": \"paragraph\"}, {\"attrs\": {\"textAlign\": null}, \"type\": \"paragraph\"}, {\"attrs\": {\"textAlign\": null}, \"content\": [{\"text\": \"Эта wiki-система предоставляет удобный инструмент для создания, организации и поиска документации с поддержкой искусственного интеллекта.\", \"type\": \"text\"}], \"type\": \"paragraph\"}], \"type\": \"doc\"}\tNULL\tNULL\tNULL\t0\t1\t0\t1\t1\t2026-01-14 05:56:38\t2026-01-14 05:57:24\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

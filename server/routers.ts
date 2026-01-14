@@ -593,56 +593,93 @@ export const appRouter = router({
     search: publicProcedure
       .input(z.object({ query: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        // Get all embeddings
-        const embeddings = await db.getAllEmbeddings();
-        if (embeddings.length === 0) {
-          // Fallback to text search
-          const results = await db.searchPages(input.query, 10);
-          return results.map(r => ({
+        try {
+          // Get all embeddings
+          const embeddings = await db.getAllEmbeddings();
+          
+          // Always use enhanced text search as primary method
+          // AI embeddings are used as a boost when available
+          const textResults = await db.searchPages(input.query, 20);
+          
+          if (embeddings.length === 0 || textResults.length === 0) {
+            // Use text search results directly
+            const results = textResults.map((r, index) => ({
+              pageId: r.id,
+              pageTitle: r.title,
+              pageSlug: r.slug,
+              snippet: r.content?.substring(0, 200) || "",
+              score: 1 - (index * 0.05), // Descending score based on text search ranking
+            }));
+            
+            // Filter by access
+            if (!ctx.user) {
+              return results.filter(r => {
+                const page = textResults.find(p => p.id === r.pageId);
+                return page?.isPublic;
+              });
+            }
+            return results.slice(0, 10);
+          }
+          
+          // Try to generate query embedding for semantic boost
+          let queryEmbedding: number[] | null = null;
+          try {
+            queryEmbedding = await generateEmbedding(input.query);
+          } catch (embError) {
+            console.warn("[AI Search] Embedding generation failed, using text search only");
+          }
+          
+          // Combine text search with semantic similarity
+          const textResultIds = new Set(textResults.map(r => r.id));
+          const scored = textResults.map((r, index) => {
+            let score = 1 - (index * 0.02); // Base score from text search
+            
+            // Add semantic similarity boost if embedding available
+            if (queryEmbedding) {
+              const pageEmbeddings = embeddings.filter(e => e.pageId === r.id);
+              if (pageEmbeddings.length > 0) {
+                const maxSimilarity = Math.max(
+                  ...pageEmbeddings.map(e => {
+                    const emb = e.embedding as number[];
+                    return cosineSimilarity(queryEmbedding!, emb);
+                  })
+                );
+                score += maxSimilarity * 0.5; // Boost by up to 0.5 based on semantic similarity
+              }
+            }
+            
+            return {
+              pageId: r.id,
+              pageTitle: r.title,
+              pageSlug: r.slug,
+              snippet: r.content?.substring(0, 200) || "",
+              score,
+              isPublic: r.isPublic,
+            };
+          });
+          
+          // Sort by combined score
+          scored.sort((a, b) => b.score - a.score);
+          
+          // Filter by access and return top 10
+          let results = scored;
+          if (!ctx.user) {
+            results = scored.filter(r => r.isPublic);
+          }
+          
+          return results.slice(0, 10).map(({ isPublic, ...r }) => r);
+        } catch (error) {
+          console.error("[AI Search] Error:", error);
+          // Ultimate fallback: simple text search
+          const fallbackResults = await db.searchPages(input.query, 10);
+          return fallbackResults.map((r, index) => ({
             pageId: r.id,
             pageTitle: r.title,
             pageSlug: r.slug,
             snippet: r.content?.substring(0, 200) || "",
-            score: 1,
+            score: 1 - (index * 0.1),
           }));
         }
-        
-        // Generate query embedding using LLM
-        const queryEmbedding = await generateEmbedding(input.query);
-        
-        // Calculate cosine similarity
-        const scored = embeddings.map(emb => {
-          const embedding = emb.embedding as number[];
-          const score = cosineSimilarity(queryEmbedding, embedding);
-          return {
-            pageId: emb.pageId,
-            pageTitle: emb.pageTitle,
-            pageSlug: emb.pageSlug,
-            snippet: emb.chunkText?.substring(0, 200) || "",
-            score,
-          };
-        });
-        
-        // Sort by score and deduplicate by page
-        scored.sort((a, b) => b.score - a.score);
-        const seen = new Set<number>();
-        const results = [];
-        for (const item of scored) {
-          if (!seen.has(item.pageId)) {
-            seen.add(item.pageId);
-            results.push(item);
-            if (results.length >= 10) break;
-          }
-        }
-        
-        // Filter by access
-        if (!ctx.user) {
-          const publicPages = await db.getPublicPages();
-          const publicIds = new Set(publicPages.map(p => p.id));
-          return results.filter(r => publicIds.has(r.pageId));
-        }
-        
-        return results;
       }),
     
     generateEmbeddings: adminProcedure

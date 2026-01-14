@@ -286,15 +286,76 @@ export async function getAllPages() {
 export async function searchPages(query: string, limit = 20) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(pages)
-    .where(and(
-      or(
-        like(pages.title, `%${query}%`),
-        like(pages.content, `%${query}%`)
-      ),
-      eq(pages.isArchived, false)
-    ))
-    .limit(limit);
+  
+  // Normalize query for better matching
+  const normalizedQuery = query.toLowerCase().trim();
+  const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 1);
+  
+  // Build search patterns for fuzzy matching
+  const searchPatterns = [
+    `%${normalizedQuery}%`, // Exact phrase
+    ...queryWords.map(w => `%${w}%`), // Individual words
+  ];
+  
+  // Get all non-archived pages and filter/rank in memory for better fuzzy matching
+  const allPages = await db.select().from(pages)
+    .where(eq(pages.isArchived, false));
+  
+  // Score and filter pages
+  const scoredPages = allPages.map(page => {
+    const titleLower = (page.title || '').toLowerCase();
+    const contentLower = (page.content || '').toLowerCase();
+    let score = 0;
+    
+    // Exact phrase match in title (highest priority)
+    if (titleLower.includes(normalizedQuery)) {
+      score += 100;
+    }
+    
+    // Exact phrase match in content
+    if (contentLower.includes(normalizedQuery)) {
+      score += 50;
+    }
+    
+    // Individual word matches
+    for (const word of queryWords) {
+      if (titleLower.includes(word)) {
+        score += 20;
+      }
+      if (contentLower.includes(word)) {
+        score += 10;
+      }
+    }
+    
+    // Fuzzy matching: check for partial word matches (typo tolerance)
+    for (const word of queryWords) {
+      if (word.length >= 3) {
+        // Check if any word in title/content starts with the query word
+        const titleWords = titleLower.split(/\s+/);
+        const contentWords = contentLower.split(/\s+/);
+        
+        for (const tw of titleWords) {
+          if (tw.startsWith(word.substring(0, 3))) {
+            score += 5;
+          }
+        }
+        for (const cw of contentWords) {
+          if (cw.startsWith(word.substring(0, 3))) {
+            score += 2;
+          }
+        }
+      }
+    }
+    
+    return { ...page, score };
+  });
+  
+  // Filter pages with score > 0 and sort by score descending
+  return scoredPages
+    .filter(p => p.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ score, ...page }) => page);
 }
 
 // ============ PAGE VERSION FUNCTIONS ============
