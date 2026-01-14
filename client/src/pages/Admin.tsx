@@ -63,8 +63,10 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
+import { useTranslation } from "react-i18next";
 
 export default function Admin() {
+  const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -166,10 +168,10 @@ export default function Admin() {
       <div className="h-screen flex flex-col items-center justify-center">
         <Shield className="h-16 w-16 text-muted-foreground/50 mb-4" />
         <h1 className="text-xl font-semibold mb-2">Access Denied</h1>
-        <p className="text-muted-foreground mb-4">You need admin privileges to access this page.</p>
+        <p className="text-muted-foreground mb-4">{t("errors.forbidden")}</p>
         <Button onClick={() => setLocation("/wiki")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Wiki
+          {t("common.back")}
         </Button>
       </div>
     );
@@ -190,8 +192,8 @@ export default function Admin() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-xl font-semibold">Admin Panel</h1>
-              <p className="text-sm text-muted-foreground">Manage users, groups, and system settings</p>
+              <h1 className="text-xl font-semibold">{t("admin.title")}</h1>
+              <p className="text-sm text-muted-foreground">{t("admin.userManagement")}</p>
             </div>
           </div>
         </div>
@@ -203,19 +205,19 @@ export default function Admin() {
           <TabsList className="mb-6">
             <TabsTrigger value="dashboard">
               <Activity className="h-4 w-4 mr-2" />
-              Dashboard
+              {t("admin.dashboard")}
             </TabsTrigger>
             <TabsTrigger value="users">
               <Users className="h-4 w-4 mr-2" />
-              Users
+              {t("admin.users")}
             </TabsTrigger>
             <TabsTrigger value="groups">
               <Shield className="h-4 w-4 mr-2" />
-              Groups
+              {t("admin.groups")}
             </TabsTrigger>
             <TabsTrigger value="requests">
               <FileText className="h-4 w-4 mr-2" />
-              Access Requests
+              {t("admin.permissions")}
               {accessRequests && accessRequests.length > 0 && (
                 <Badge variant="destructive" className="ml-2">
                   {accessRequests.length}
@@ -224,11 +226,11 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="activity">
               <Activity className="h-4 w-4 mr-2" />
-              Activity Log
+              {t("admin.logs")}
             </TabsTrigger>
             <TabsTrigger value="analytics">
               <Activity className="h-4 w-4 mr-2" />
-              Analytics
+              {t("admin.analytics")}
             </TabsTrigger>
           </TabsList>
           
@@ -237,7 +239,7 @@ export default function Admin() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+                  <CardTitle className="text-sm font-medium">{t("admin.totalUsers")}</CardTitle>
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -246,7 +248,7 @@ export default function Admin() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Pages</CardTitle>
+                  <CardTitle className="text-sm font-medium">{t("admin.totalPages")}</CardTitle>
                   <FileText className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -255,7 +257,7 @@ export default function Admin() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Groups</CardTitle>
+                  <CardTitle className="text-sm font-medium">{t("admin.totalGroups")}</CardTitle>
                   <Shield className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -264,7 +266,7 @@ export default function Admin() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Pending Requests</CardTitle>
+                  <CardTitle className="text-sm font-medium">{t("admin.permissions")}</CardTitle>
                   <Activity className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -276,8 +278,8 @@ export default function Admin() {
             {/* Recent Activity */}
             <Card className="mt-6">
               <CardHeader>
-                <CardTitle>Recent Activity</CardTitle>
-                <CardDescription>Latest actions in the system</CardDescription>
+                <CardTitle>{t("admin.recentActivity")}</CardTitle>
+                <CardDescription>{t("admin.logs")}</CardDescription>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-64">
@@ -312,17 +314,17 @@ export default function Admin() {
           <TabsContent value="users">
             <Card>
               <CardHeader>
-                <CardTitle>User Management</CardTitle>
-                <CardDescription>Manage user accounts and roles</CardDescription>
+                <CardTitle>{t("admin.userManagement")}</CardTitle>
+                <CardDescription>{t("admin.users")}</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Last Sign In</TableHead>
+                      <TableHead>{t("admin.userName")}</TableHead>
+                      <TableHead>{t("admin.userEmail")}</TableHead>
+                      <TableHead>{t("admin.role")}</TableHead>
+                      <TableHead>{t("admin.recentActivity")}</TableHead>
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -378,12 +380,12 @@ export default function Admin() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
-                    <CardTitle>Groups</CardTitle>
-                    <CardDescription>Manage access groups</CardDescription>
+                    <CardTitle>{t("admin.groups")}</CardTitle>
+                    <CardDescription>{t("admin.groupManagement")}</CardDescription>
                   </div>
                   <Button size="sm" onClick={() => setCreateGroupOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
-                    New Group
+                    {t("admin.createGroup")}
                   </Button>
                 </CardHeader>
                 <CardContent>
@@ -426,14 +428,14 @@ export default function Admin() {
                                   setEditGroupOpen(true);
                                 }}>
                                   <Edit className="h-4 w-4 mr-2" />
-                                  Edit
+                                  {t("common.edit")}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-destructive"
                                   onClick={() => deleteGroup.mutate({ id: group.id })}
                                 >
                                   <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
+                                  {t("common.delete")}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -459,16 +461,16 @@ export default function Admin() {
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
                     <CardTitle>
-                      {selectedGroup ? `${selectedGroup.name} Members` : "Group Members"}
+                      {selectedGroup ? `${selectedGroup.name} - ${t("admin.groupMembers")}` : t("admin.groupMembers")}
                     </CardTitle>
                     <CardDescription>
-                      {selectedGroup ? "Manage group membership" : "Select a group to view members"}
+                      {selectedGroup ? t("admin.groupManagement") : t("admin.groups")}
                     </CardDescription>
                   </div>
                   {selectedGroup && (
                     <Button size="sm" onClick={() => setAddMemberOpen(true)}>
                       <UserPlus className="h-4 w-4 mr-2" />
-                      Add Member
+                      {t("admin.addMember")}
                     </Button>
                   )}
                 </CardHeader>
@@ -642,12 +644,12 @@ export default function Admin() {
       <Dialog open={createGroupOpen} onOpenChange={setCreateGroupOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Group</DialogTitle>
-            <DialogDescription>Add a new access group for organizing users</DialogDescription>
+            <DialogTitle>{t("admin.createGroup")}</DialogTitle>
+            <DialogDescription>{t("admin.groupDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Group Name</Label>
+              <Label htmlFor="name">{t("admin.groupName")}</Label>
               <Input
                 id="name"
                 value={newGroupName}
@@ -656,7 +658,7 @@ export default function Admin() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t("admin.groupDescription")}</Label>
               <Input
                 id="description"
                 value={newGroupDescription}
@@ -665,7 +667,7 @@ export default function Admin() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="color">Color</Label>
+              <Label htmlFor="color">{t("tags.tagColor")}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   id="color"
@@ -683,14 +685,14 @@ export default function Admin() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateGroupOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCreateGroupOpen(false)}>{t("common.cancel")}</Button>
             <Button onClick={() => createGroup.mutate({
               name: newGroupName,
               description: newGroupDescription,
               color: newGroupColor,
             })} disabled={!newGroupName.trim() || createGroup.isPending}>
               {createGroup.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Group
+              {t("admin.createGroup")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -700,12 +702,12 @@ export default function Admin() {
       <Dialog open={editGroupOpen} onOpenChange={setEditGroupOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Group</DialogTitle>
-            <DialogDescription>Update group details</DialogDescription>
+            <DialogTitle>{t("admin.editGroup")}</DialogTitle>
+            <DialogDescription>{t("admin.groupDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-name">Group Name</Label>
+              <Label htmlFor="edit-name">{t("admin.groupName")}</Label>
               <Input
                 id="edit-name"
                 value={newGroupName}
@@ -713,7 +715,7 @@ export default function Admin() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-description">Description</Label>
+              <Label htmlFor="edit-description">{t("admin.groupDescription")}</Label>
               <Input
                 id="edit-description"
                 value={newGroupDescription}
@@ -721,7 +723,7 @@ export default function Admin() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-color">Color</Label>
+              <Label htmlFor="edit-color">{t("tags.tagColor")}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   id="edit-color"
@@ -739,7 +741,7 @@ export default function Admin() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditGroupOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditGroupOpen(false)}>{t("common.cancel")}</Button>
             <Button onClick={() => selectedGroup && updateGroup.mutate({
               id: selectedGroup.id,
               name: newGroupName,
@@ -747,7 +749,7 @@ export default function Admin() {
               color: newGroupColor,
             })} disabled={!newGroupName.trim() || updateGroup.isPending}>
               {updateGroup.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save Changes
+              {t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -757,8 +759,8 @@ export default function Admin() {
       <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Member to {selectedGroup?.name}</DialogTitle>
-            <DialogDescription>Select a user to add to this group</DialogDescription>
+            <DialogTitle>{t("admin.addMember")} - {selectedGroup?.name}</DialogTitle>
+            <DialogDescription>{t("admin.groupMembers")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -783,22 +785,22 @@ export default function Admin() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">Member (Read only)</SelectItem>
-                  <SelectItem value="editor">Editor (Can edit)</SelectItem>
-                  <SelectItem value="admin">Admin (Full access)</SelectItem>
+                  <SelectItem value="member">{t("admin.roles.reader")}</SelectItem>
+                  <SelectItem value="editor">{t("admin.roles.editor")}</SelectItem>
+                  <SelectItem value="admin">{t("admin.roles.admin")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddMemberOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setAddMemberOpen(false)}>{t("common.cancel")}</Button>
             <Button onClick={() => selectedGroup && addMember.mutate({
               groupId: selectedGroup.id,
               userId: parseInt(selectedUserId),
               role: selectedMemberRole,
             })} disabled={!selectedUserId || addMember.isPending}>
               {addMember.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Add Member
+              {t("admin.addMember")}
             </Button>
           </DialogFooter>
         </DialogContent>

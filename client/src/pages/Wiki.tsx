@@ -63,6 +63,9 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getLoginUrl } from "@/const";
 import { NotificationBell } from "@/components/NotificationBell";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useTranslation } from "react-i18next";
 
 interface Page {
   id: number;
@@ -77,6 +80,7 @@ interface Page {
 }
 
 export default function Wiki() {
+  const { t } = useTranslation();
   const params = useParams<{ slug?: string }>();
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -322,7 +326,7 @@ export default function Wiki() {
             onClick={() => setLocation("/search")}
           >
             <Search className="h-4 w-4 mr-2" />
-            Search
+            {t("common.search")}
           </Button>
           
           {isAuthenticated ? (
@@ -365,7 +369,7 @@ export default function Wiki() {
           ) : (
             <Button size="sm" onClick={() => window.location.href = getLoginUrl()}>
               <LogIn className="h-4 w-4 mr-2" />
-              Sign In
+              {t("auth.login")}
             </Button>
           )}
         </div>
@@ -460,7 +464,7 @@ export default function Wiki() {
                           ) : (
                             <Save className="h-4 w-4 mr-2" />
                           )}
-                          Save
+                          {t("common.save")}
                         </Button>
                       )}
                       
@@ -473,7 +477,7 @@ export default function Wiki() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setHistoryDialogOpen(true)}>
                             <History className="h-4 w-4 mr-2" />
-                            Version History
+                            {t("wiki.viewHistory")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => {
                             navigator.clipboard.writeText(window.location.href);
@@ -500,7 +504,7 @@ export default function Wiki() {
                             }
                           }}>
                             <FileDown className="h-4 w-4 mr-2" />
-                            Export to Markdown
+                            {t("export.exportAs")} Markdown
                           </DropdownMenuItem>
                           {isAdmin && (
                             <>
@@ -537,13 +541,13 @@ export default function Wiki() {
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
                   <FileText className="h-16 w-16 text-muted-foreground/50 mb-4" />
-                  <h2 className="text-xl font-semibold mb-2">Welcome to Scoliologic Wiki</h2>
+                  <h2 className="text-xl font-semibold mb-2">{t("wiki.welcome")}</h2>
                   <p className="text-muted-foreground mb-6 max-w-md">
-                    Select a page from the sidebar to view its content, or create a new page to get started.
+                    {t("wiki.noPages")} {t("wiki.createFirstPage")}
                   </p>
                   {canEdit && (
                     <Button onClick={() => openCreateDialog()}>
-                      Create New Page
+                      {t("wiki.createPage")}
                     </Button>
                   )}
                 </div>
@@ -557,28 +561,28 @@ export default function Wiki() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Page</DialogTitle>
+            <DialogTitle>{t("wiki.createPage")}</DialogTitle>
             <DialogDescription>
-              Add a new page to the wiki. You can organize pages hierarchically.
+              {t("wiki.pageTitle")}
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="title">Page Title</Label>
+              <Label htmlFor="title">{t("wiki.pageTitle")}</Label>
               <Input
                 id="title"
                 value={newPageTitle}
                 onChange={(e) => setNewPageTitle(e.target.value)}
-                placeholder="Enter page title..."
+                placeholder={t("wiki.enterTitle")}
               />
             </div>
             
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>Public Access</Label>
+                <Label>{t("wiki.visibility")}</Label>
                 <p className="text-sm text-muted-foreground">
-                  Allow guests to view this page
+                  {t("wiki.makePublic")}
                 </p>
               </div>
               <Switch
@@ -590,11 +594,11 @@ export default function Wiki() {
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleCreatePage} disabled={!newPageTitle.trim() || createPage.isPending}>
               {createPage.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Page
+              {t("wiki.createPage")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -604,19 +608,19 @@ export default function Wiki() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Page</AlertDialogTitle>
+            <AlertDialogTitle>{t("wiki.deletePage")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this page? This action cannot be undone.
-              All child pages will also be deleted.
+              {t("wiki.confirmDelete")} {t("wiki.deleteWarning")}
+              {t("wiki.deleteChildPages")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeletePage}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("common.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -626,7 +630,7 @@ export default function Wiki() {
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Version History</DialogTitle>
+            <DialogTitle>{t("wiki.history")}</DialogTitle>
             <DialogDescription>
               View and restore previous versions of this page.
             </DialogDescription>

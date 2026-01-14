@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Bell, Check, CheckCheck, Trash2, Settings, FileText, MessageSquare, AtSign, Share2, Shield, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +14,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
-import { ru } from "date-fns/locale";
+import { ru, enUS } from "date-fns/locale";
+import { useTranslation } from "react-i18next";
 
 type NotificationType = 
   | "page_updated"
@@ -51,6 +52,7 @@ const notificationIcons: Record<NotificationType, React.ReactNode> = {
 };
 
 export function NotificationBell() {
+  const { t, i18n } = useTranslation();
   const [, setLocation] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   
@@ -95,7 +97,8 @@ export function NotificationBell() {
   };
 
   const formatTime = (date: Date) => {
-    return formatDistanceToNow(new Date(date), { addSuffix: true, locale: ru });
+    const locale = i18n.language === 'ru' ? ru : enUS;
+    return formatDistanceToNow(new Date(date), { addSuffix: true, locale });
   };
 
   return (
@@ -115,7 +118,7 @@ export function NotificationBell() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuLabel className="flex items-center justify-between">
-          <span>Уведомления</span>
+          <span>{t("notifications.title")}</span>
           {unreadCount > 0 && (
             <Button
               variant="ghost"
@@ -124,7 +127,7 @@ export function NotificationBell() {
               onClick={handleMarkAllAsRead}
             >
               <CheckCheck className="h-3 w-3 mr-1" />
-              Прочитать все
+              {t("notifications.markAllAsRead")}
             </Button>
           )}
         </DropdownMenuLabel>
@@ -134,7 +137,7 @@ export function NotificationBell() {
           {notifications.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground">
               <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Нет уведомлений</p>
+              <p>{t("notifications.noNotifications")}</p>
             </div>
           ) : (
             notifications.map((notification) => (
@@ -198,7 +201,7 @@ export function NotificationBell() {
           }}
         >
           <Settings className="h-4 w-4 mr-2" />
-          Настройки уведомлений
+          {t("notifications.settings")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

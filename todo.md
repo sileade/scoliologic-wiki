@@ -248,3 +248,16 @@
 - [x] Add tags filter to search
 - [x] Update README with new features
 - [ ] Push changes to GitHub
+
+
+## Русская локализация (i18n)
+- [x] Установить i18next и react-i18next
+- [x] Создать конфигурацию i18n
+- [x] Создать файлы переводов (ru.json, en.json)
+- [x] Создать компонент переключателя языка
+- [x] Локализовать Home.tsx
+- [x] Локализовать Search.tsx
+- [x] Локализовать NotificationBell.tsx
+- [x] Локализовать Wiki.tsx
+- [x] Локализовать Admin.tsx
+- [x] Добавить переключатель языка в навигацию

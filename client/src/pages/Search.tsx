@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useTranslation } from "react-i18next";
 import {
   Search as SearchIcon,
   FileText,
@@ -15,7 +15,6 @@ import {
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 
 interface SearchResult {
   pageId: number;
@@ -26,6 +25,7 @@ interface SearchResult {
 }
 
 export default function Search() {
+  const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -131,7 +131,7 @@ export default function Search() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Search wiki pages..."
+                  placeholder={t("search.placeholder")}
                   className="pl-10 pr-4"
                   autoFocus
                 />
@@ -145,7 +145,7 @@ export default function Search() {
                   onClick={() => setSearchMode("text")}
                 >
                   <SearchIcon className="h-4 w-4 mr-1" />
-                  Text
+                  {t("search.fullTextSearch")}
                 </Button>
                 <Button
                   variant={searchMode === "ai" ? "secondary" : "ghost"}
@@ -162,7 +162,7 @@ export default function Search() {
                 {isSearching ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  "Search"
+                  t("common.search")
                 )}
               </Button>
             </div>
@@ -170,7 +170,7 @@ export default function Search() {
           
           {searchMode === "ai" && (
             <p className="text-sm text-muted-foreground mt-2 ml-12">
-              AI search uses semantic understanding to find relevant content
+              {t("search.aiPowered")}
             </p>
           )}
         </div>
@@ -182,7 +182,7 @@ export default function Search() {
           <div className="container max-w-4xl py-3">
             <div className="flex items-center gap-2 flex-wrap">
               <Tag className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground mr-2">Filter by tag:</span>
+              <span className="text-sm text-muted-foreground mr-2">{t("search.filterByTag")}:</span>
               {allTags.map((tag) => (
                 <Badge
                   key={tag.id}
@@ -206,7 +206,7 @@ export default function Search() {
                   onClick={() => setSelectedTagId(null)}
                 >
                   <X className="h-3 w-3 mr-1" />
-                  Clear
+                  {t("common.clear")}
                 </Button>
               )}
             </div>
@@ -223,10 +223,10 @@ export default function Search() {
               {loadingTagPages ? (
                 <span className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading pages...
+                  {t("common.loading")}
                 </span>
               ) : (
-                `Found ${tagPages.length} page${tagPages.length !== 1 ? 's' : ''} with this tag`
+                t("search.resultsCount", { count: tagPages.length })
               )}
             </div>
             
@@ -243,7 +243,7 @@ export default function Search() {
                       <div className="flex-1 min-w-0">
                         <h3 className="font-medium text-lg">{page.title}</h3>
                         <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                          {page.content?.substring(0, 200) || 'No content'}...
+                          {page.content?.substring(0, 200) || t("common.noData")}...
                         </p>
                       </div>
                     </div>
@@ -254,7 +254,7 @@ export default function Search() {
             
             {!loadingTagPages && tagPages.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
-                No pages found with this tag
+                {t("search.noResults")}
               </div>
             )}
           </div>
@@ -264,7 +264,7 @@ export default function Search() {
         {!selectedTagId && results.length > 0 ? (
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
-              Found {results.length} result{results.length !== 1 ? "s" : ""}
+              {t("search.resultsCount", { count: results.length })}
             </div>
             
             <div className="space-y-3">
@@ -286,7 +286,7 @@ export default function Search() {
                       {searchMode === "ai" && result.score < 1 && (
                         <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
                           <Sparkles className="h-3 w-3" />
-                          Relevance: {Math.round(result.score * 100)}%
+                          {t("search.sortByRelevance")}: {Math.round(result.score * 100)}%
                         </div>
                       )}
                     </div>
@@ -299,15 +299,15 @@ export default function Search() {
           <div className="flex flex-col items-center justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-              {searchMode === "ai" ? "Searching with AI..." : "Searching..."}
+              {searchMode === "ai" ? t("search.searching") + " (AI)..." : t("search.searching")}
             </p>
           </div>
         ) : !selectedTagId && query && !isSearching ? (
           <div className="flex flex-col items-center justify-center py-16">
             <SearchIcon className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <p className="text-muted-foreground">No results found for "{query}"</p>
+            <p className="text-muted-foreground">{t("search.noResults")} "{query}"</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Try different keywords or use AI search for semantic matching
+              {t("search.tryDifferentQuery")}
             </p>
           </div>
         ) : !selectedTagId ? (
@@ -317,7 +317,7 @@ export default function Search() {
               <div>
                 <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
                   <Clock className="h-4 w-4" />
-                  Recent Searches
+                  {t("search.recentSearches")}
                 </h2>
                 <div className="flex flex-wrap gap-2">
                   {recentSearches.map((search, i) => (
@@ -339,24 +339,24 @@ export default function Search() {
             
             {/* Search Tips */}
             <div className="bg-muted/50 rounded-lg p-6">
-              <h2 className="font-medium mb-4">Search Tips</h2>
+              <h2 className="font-medium mb-4">{t("search.searchTips")}</h2>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <SearchIcon className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>
-                    <strong>Text Search:</strong> Finds exact matches in page titles and content
+                    <strong>{t("search.fullTextSearch")}:</strong> {t("search.fullTextSearchDesc")}
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Sparkles className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>
-                    <strong>AI Search:</strong> Understands the meaning of your query and finds semantically related content
+                    <strong>{t("search.semanticSearch")}:</strong> {t("search.semanticSearchDesc")}
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <FileText className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>
-                    Use specific keywords for better results
+                    {t("search.useSpecificKeywords")}
                   </span>
                 </li>
               </ul>
