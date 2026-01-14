@@ -66,6 +66,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTranslation } from "react-i18next";
+import { useLocalizedError } from "@/hooks/useLocalizedError";
 
 interface Page {
   id: number;
@@ -81,6 +82,7 @@ interface Page {
 
 export default function Wiki() {
   const { t } = useTranslation();
+  const { getErrorMessage } = useLocalizedError();
   const params = useParams<{ slug?: string }>();
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -127,7 +129,7 @@ export default function Wiki() {
       toast.success(t("wiki.pageCreated"));
     },
     onError: (error) => {
-      toast.error(error.message);
+      toast.error(getErrorMessage(error));
     },
   });
   
@@ -139,7 +141,7 @@ export default function Wiki() {
       toast.success(t("wiki.pageUpdated"));
     },
     onError: (error) => {
-      toast.error(error.message);
+      toast.error(getErrorMessage(error));
     },
   });
   
@@ -153,7 +155,7 @@ export default function Wiki() {
       toast.success(t("wiki.pageDeleted"));
     },
     onError: (error) => {
-      toast.error(error.message);
+      toast.error(getErrorMessage(error));
     },
   });
   
@@ -164,7 +166,7 @@ export default function Wiki() {
       toast.success(t("wiki.versionRestored"));
     },
     onError: (error) => {
-      toast.error(error.message);
+      toast.error(getErrorMessage(error));
     },
   });
   

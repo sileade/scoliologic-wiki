@@ -64,9 +64,11 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import { useTranslation } from "react-i18next";
+import { useLocalizedError } from "@/hooks/useLocalizedError";
 
 export default function Admin() {
   const { t } = useTranslation();
+  const { getErrorMessage } = useLocalizedError();
   const [, setLocation] = useLocation();
   const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -106,6 +108,9 @@ export default function Admin() {
       setNewGroupDescription("");
       toast.success(t("admin.groupCreated"));
     },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
   });
   
   const updateGroup = trpc.groups.update.useMutation({
@@ -115,12 +120,18 @@ export default function Admin() {
       setSelectedGroup(null);
       toast.success(t("admin.groupUpdated"));
     },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
   });
   
   const deleteGroup = trpc.groups.delete.useMutation({
     onSuccess: () => {
       utils.groups.list.invalidate();
       toast.success(t("admin.groupDeleted"));
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
     },
   });
   
@@ -131,12 +142,18 @@ export default function Admin() {
       setSelectedUserId("");
       toast.success(t("admin.memberAdded"));
     },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
   });
   
   const removeMember = trpc.groups.removeMember.useMutation({
     onSuccess: () => {
       utils.groups.getMembers.invalidate({ groupId: selectedGroup?.id });
       toast.success(t("admin.memberRemoved"));
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
     },
   });
   
@@ -145,12 +162,18 @@ export default function Admin() {
       utils.users.list.invalidate();
       toast.success(t("admin.roleUpdated"));
     },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
   });
   
   const handleAccessRequest = trpc.admin.handleAccessRequest.useMutation({
     onSuccess: () => {
       utils.admin.getPendingAccessRequests.invalidate();
       toast.success(t("admin.requestHandled"));
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
     },
   });
   
