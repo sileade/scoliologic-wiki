@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { registerAuthentikOAuthRoutes } from "../authentikOAuth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -42,6 +43,9 @@ async function startServer() {
   
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  
+  // Authentik OAuth2/OIDC routes
+  registerAuthentikOAuthRoutes(app);
   // tRPC API
   app.use(
     "/api/trpc",

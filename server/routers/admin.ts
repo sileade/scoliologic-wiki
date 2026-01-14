@@ -3,6 +3,8 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import * as db from "../db";
 import * as analytics from "../analytics";
+import * as authentik from "../authentik";
+import { ENV } from "../_core/env";
 
 // Admin procedure middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -69,5 +71,42 @@ export const adminRouter = router({
       defaultUserRole: "user",
       aiEnabled: true,
     };
+  }),
+
+  // Authentik integration
+  getAuthentikStatus: adminProcedure.query(async () => {
+    const status = await authentik.checkAuthentikConnection();
+    return {
+      enabled: ENV.authentikEnabled,
+      ...status,
+    };
+  }),
+
+  syncAuthentikGroups: adminProcedure.mutation(async () => {
+    if (!ENV.authentikEnabled) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Authentik integration is not enabled" });
+    }
+    return authentik.syncGroupsFromAuthentik();
+  }),
+
+  syncAuthentikUsers: adminProcedure.mutation(async () => {
+    if (!ENV.authentikEnabled) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Authentik integration is not enabled" });
+    }
+    return authentik.syncUsersFromAuthentik();
+  }),
+
+  syncAuthentikMemberships: adminProcedure.mutation(async () => {
+    if (!ENV.authentikEnabled) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Authentik integration is not enabled" });
+    }
+    return authentik.syncUserGroupMemberships();
+  }),
+
+  fullAuthentikSync: adminProcedure.mutation(async () => {
+    if (!ENV.authentikEnabled) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Authentik integration is not enabled" });
+    }
+    return authentik.fullSyncFromAuthentik();
   }),
 });

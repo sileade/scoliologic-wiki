@@ -7,4 +7,11 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  
+  // Authentik OAuth2/OIDC configuration
+  authentikUrl: process.env.AUTHENTIK_URL ?? "",
+  authentikClientId: process.env.AUTHENTIK_CLIENT_ID ?? "",
+  authentikClientSecret: process.env.AUTHENTIK_CLIENT_SECRET ?? "",
+  authentikApiToken: process.env.AUTHENTIK_API_TOKEN ?? "",
+  authentikEnabled: process.env.AUTHENTIK_ENABLED === "true",
 };

@@ -286,10 +286,34 @@ https://wiki.yourdomain.com
 
 Для настройки OAuth2 авторизации через Authentik:
 
-1. Создайте OAuth2/OpenID Provider в Authentik
-2. Настройте Redirect URI: `https://wiki.yourdomain.com/api/oauth/callback`
-3. Добавьте Client ID и Secret в `config.env`
-4. Включите синхронизацию групп в настройках админ-панели
+1. **Создайте OAuth2/OpenID Provider в Authentik:**
+   - Тип: OAuth2/OpenID Provider
+   - Client Type: Confidential
+   - Redirect URIs: `https://wiki.yourdomain.com/api/authentik/callback`
+   - Scopes: `openid profile email groups`
+
+2. **Настройте переменные окружения:**
+   ```env
+   AUTHENTIK_ENABLED=true
+   AUTHENTIK_URL=https://auth.example.com
+   AUTHENTIK_CLIENT_ID=wiki-client
+   AUTHENTIK_CLIENT_SECRET=your-secret
+   AUTHENTIK_API_TOKEN=your-api-token
+   ```
+
+3. **API Token для синхронизации:**
+   - В Authentik создайте API Token с правами на чтение пользователей и групп
+   - Добавьте токен в `AUTHENTIK_API_TOKEN`
+
+4. **Синхронизация пользователей и групп:**
+   - В админ-панели Wiki перейдите в раздел "Authentik"
+   - Нажмите "Полная синхронизация" для импорта пользователей и групп
+   - Синхронизация также выполняется автоматически каждый час
+
+5. **Права доступа:**
+   - Группы из Authentik автоматически создаются в Wiki
+   - Членство в группах синхронизируется при входе пользователя
+   - Суперпользователи Authentik получают роль admin в Wiki
 
 ### AI-модели (Ollama)
 

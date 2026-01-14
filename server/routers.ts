@@ -500,6 +500,44 @@ export const appRouter = router({
         return db.getPagePermissions(input.pageId);
       }),
     
+    // Check user's permission on a specific page
+    checkMyPermission: publicProcedure
+      .input(z.object({ pageId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        // If not authenticated, check if page is public
+        if (!ctx.user) {
+          const page = await db.getPageById(input.pageId);
+          if (page?.isPublic) {
+            return { canRead: true, canEdit: false, canAdmin: false, permission: "read" as const };
+          }
+          return { canRead: false, canEdit: false, canAdmin: false, permission: null };
+        }
+        
+        // Admins have full access
+        if (ctx.user.role === "admin") {
+          return { canRead: true, canEdit: true, canAdmin: true, permission: "admin" as const };
+        }
+        
+        // Check page-specific permission
+        const permission = await db.checkUserPagePermission(ctx.user.id, input.pageId);
+        
+        // If no specific permission, check if page is public
+        if (!permission) {
+          const page = await db.getPageById(input.pageId);
+          if (page?.isPublic) {
+            return { canRead: true, canEdit: false, canAdmin: false, permission: "read" as const };
+          }
+          return { canRead: false, canEdit: false, canAdmin: false, permission: null };
+        }
+        
+        return {
+          canRead: true,
+          canEdit: permission === "edit" || permission === "admin",
+          canAdmin: permission === "admin",
+          permission,
+        };
+      }),
+    
     setPermission: adminProcedure
       .input(z.object({
         pageId: z.number(),

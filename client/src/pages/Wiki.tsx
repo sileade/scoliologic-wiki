@@ -94,6 +94,7 @@ export default function Wiki() {
   const [editedTitle, setEditedTitle] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   
   // Dialogs
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -181,6 +182,7 @@ export default function Wiki() {
       setEditedContent(pageData.content || "");
       setEditedContentJson(pageData.contentJson as object || null);
       setHasChanges(false);
+      setIsEditMode(false); // Reset to view mode when page changes
     }
   }, [pageData]);
   
@@ -290,7 +292,16 @@ export default function Wiki() {
   };
   
   const isAdmin = user?.role === "admin";
-  const canEdit = isAuthenticated && (isAdmin || user?.role === "user");
+  
+  // Check page-specific permissions
+  const { data: pagePermission } = trpc.pages.checkMyPermission.useQuery(
+    { pageId: currentPage?.id || 0 },
+    { enabled: !!currentPage?.id }
+  );
+  
+  // User can edit if they have edit/admin permission on this page
+  const canEdit = isAdmin || pagePermission?.canEdit || false;
+  const canRead = pagePermission?.canRead || currentPage?.isPublic || isAdmin || false;
   
   // Loading state
   if (authLoading) {
@@ -427,7 +438,7 @@ export default function Wiki() {
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
                       
-                      {canEdit ? (
+                      {isEditMode ? (
                         <Input
                           value={editedTitle}
                           onChange={(e) => handleTitleChange(e.target.value)}
@@ -443,11 +454,41 @@ export default function Wiki() {
                       ) : (
                         <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
                       )}
+                      
+                      {/* Edit button - only shown to users with edit permission */}
+                      {canEdit && !isEditMode && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsEditMode(true)}
+                          className="ml-2"
+                        >
+                          {t("common.edit")}
+                        </Button>
+                      )}
+                      
+                      {/* Cancel edit button */}
+                      {isEditMode && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setIsEditMode(false);
+                            setEditedTitle(currentPage.title);
+                            setEditedContent(currentPage.content || "");
+                            setEditedContentJson(currentPage.contentJson as object || null);
+                            setHasChanges(false);
+                          }}
+                          className="ml-2"
+                        >
+                          {t("common.cancel")}
+                        </Button>
+                      )}
                     </div>
                     
                     {/* Tags */}
                     <div className="flex-1 min-w-0">
-                      <TagInput pageId={currentPage.id} editable={canEdit} />
+                      <TagInput pageId={currentPage.id} editable={isEditMode} />
                     </div>
                     
                     <div className="flex items-center gap-2 shrink-0">
@@ -455,7 +496,7 @@ export default function Wiki() {
                         <FavoriteButton pageId={currentPage.id} />
                       )}
                       
-                      {canEdit && hasChanges && (
+                      {isEditMode && hasChanges && (
                         <Button
                           size="sm"
                           onClick={handleSave}
@@ -529,9 +570,9 @@ export default function Wiki() {
                         content={currentPage.content || ""}
                         contentJson={currentPage.contentJson as object}
                         onChange={handleContentChange}
-                        editable={canEdit}
-                        onImageUpload={canEdit ? handleImageUpload : undefined}
-                        onVideoUpload={canEdit ? handleVideoUpload : undefined}
+                        editable={isEditMode}
+                        onImageUpload={isEditMode ? handleImageUpload : undefined}
+                        onVideoUpload={isEditMode ? handleVideoUpload : undefined}
                       />
                     </div>
                   </ScrollArea>
