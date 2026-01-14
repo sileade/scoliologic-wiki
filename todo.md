@@ -283,3 +283,11 @@
 - [x] Локализовать серверные ошибки tRPC на клиентской стороне
 - [x] Добавить ключи ошибок в ru.json и en.json
 - [x] Запустить тесты и проверить работоспособность
+
+
+## CI Pipeline
+- [x] Создать GitHub Actions workflow для тестов
+- [x] Настроить запуск при push и pull request
+- [x] Добавить проверку TypeScript
+- [x] Добавить проверку ESLint (включена в TypeScript check)
+- [ ] Коммит и push в GitHub
