@@ -10,6 +10,7 @@ import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as ollama from "./ollama";
 import { generatePDF, generateMultiPagePDF } from "./pdf";
+import { generateMarkdownFile, generateMarkdownBundle } from "./markdown";
 
 // Admin procedure middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -1192,6 +1193,173 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         await db.upsertNotificationPreferences(ctx.user.id, input);
         return { success: true };
+      }),
+  }),
+
+  // ==================== FAVORITES ====================
+  favorites: router({
+    // Add page to favorites
+    add: protectedProcedure
+      .input(z.object({ pageId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await db.addToFavorites(ctx.user.id, input.pageId);
+        if (!result) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to add to favorites" });
+        }
+        return { success: true, id: result.id };
+      }),
+
+    // Remove page from favorites
+    remove: protectedProcedure
+      .input(z.object({ pageId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await db.removeFromFavorites(ctx.user.id, input.pageId);
+        return { success: true };
+      }),
+
+    // Check if page is favorited
+    isFavorited: protectedProcedure
+      .input(z.object({ pageId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const isFavorited = await db.isPageFavorited(ctx.user.id, input.pageId);
+        return { isFavorited };
+      }),
+
+    // Get user's favorite pages
+    list: protectedProcedure
+      .query(async ({ ctx }) => {
+        const favorites = await db.getUserFavorites(ctx.user.id);
+        return favorites;
+      }),
+
+    // Get favorite page IDs (for batch checking)
+    getIds: protectedProcedure
+      .query(async ({ ctx }) => {
+        const ids = await db.getUserFavoritePageIds(ctx.user.id);
+        return ids;
+      }),
+  }),
+
+  // ==================== MARKDOWN EXPORT ====================
+  markdown: router({
+    // Export single page to Markdown
+    exportPage: protectedProcedure
+      .input(z.object({ pageId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getPageById(input.pageId);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+
+        // Check access
+        const hasAccess = await db.checkUserPagePermission(ctx.user.id, input.pageId);
+        if (!hasAccess) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+        }
+
+        const author = page.createdById ? await db.getUserById(page.createdById) : null;
+        
+        const markdown = generateMarkdownFile({
+          title: page.title,
+          slug: page.slug,
+          icon: page.icon,
+          contentJson: page.contentJson as object | null,
+          createdAt: page.createdAt,
+          updatedAt: page.updatedAt,
+          authorName: author?.name,
+        });
+
+        return {
+          filename: `${page.slug}.md`,
+          content: markdown,
+        };
+      }),
+
+    // Export multiple pages to Markdown
+    exportPages: protectedProcedure
+      .input(z.object({ pageIds: z.array(z.number()) }))
+      .mutation(async ({ input, ctx }) => {
+        const results: Array<{ filename: string; content: string }> = [];
+
+        for (const pageId of input.pageIds) {
+          const page = await db.getPageById(pageId);
+          if (!page) continue;
+
+          const hasAccess = await db.checkUserPagePermission(ctx.user.id, pageId);
+          if (!hasAccess) continue;
+
+          const author = page.createdById ? await db.getUserById(page.createdById) : null;
+          const parent = page.parentId ? await db.getPageById(page.parentId) : null;
+
+          const markdown = generateMarkdownFile({
+            title: page.title,
+            slug: page.slug,
+            icon: page.icon,
+            contentJson: page.contentJson as object | null,
+            createdAt: page.createdAt,
+            updatedAt: page.updatedAt,
+            authorName: author?.name,
+          });
+
+          const filename = parent 
+            ? `${parent.slug}/${page.slug}.md`
+            : `${page.slug}.md`;
+
+          results.push({ filename, content: markdown });
+        }
+
+        return results;
+      }),
+
+    // Export page with all subpages
+    exportWithChildren: protectedProcedure
+      .input(z.object({ pageId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getPageById(input.pageId);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+
+        const hasAccess = await db.checkUserPagePermission(ctx.user.id, input.pageId);
+        if (!hasAccess) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+        }
+
+        const results: Array<{ filename: string; content: string }> = [];
+
+        // Helper function to recursively get pages
+        async function processPage(p: typeof page, parentPath: string = "") {
+          if (!p) return;
+          
+          const author = p.createdById ? await db.getUserById(p.createdById) : null;
+          const markdown = generateMarkdownFile({
+            title: p.title,
+            slug: p.slug,
+            icon: p.icon,
+            contentJson: p.contentJson as object | null,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+            authorName: author?.name,
+          });
+
+          const filename = parentPath 
+            ? `${parentPath}/${p.slug}.md`
+            : `${p.slug}.md`;
+
+          results.push({ filename, content: markdown });
+
+          // Get children
+          const children = await db.getChildPages(p.id);
+          for (const child of children) {
+            const childHasAccess = await db.checkUserPagePermission(ctx.user.id, child.id);
+            if (childHasAccess) {
+              await processPage(child, parentPath ? `${parentPath}/${p.slug}` : p.slug);
+            }
+          }
+        }
+
+        await processPage(page);
+        return results;
       }),
   }),
 });

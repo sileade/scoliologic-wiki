@@ -438,3 +438,21 @@ export const notificationPreferencesRelations = relations(notificationPreference
     references: [users.id],
   }),
 }));
+
+
+/**
+ * User favorites - bookmarked pages for quick access
+ */
+export const favorites = mysqlTable("favorites", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  pageId: int("pageId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("favorites_user_idx").on(table.userId),
+  index("favorites_page_idx").on(table.pageId),
+  index("favorites_user_page_idx").on(table.userId, table.pageId),
+]);
+
+export type Favorite = typeof favorites.$inferSelect;
+export type InsertFavorite = typeof favorites.$inferInsert;

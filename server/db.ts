@@ -15,6 +15,7 @@ import {
   InsertPageTemplate, pageTemplates,
   InsertNotification, notifications,
   InsertNotificationPreference, notificationPreferences,
+  InsertFavorite, favorites,
   User, Group, Page, PageVersion, PagePermission, Notification, NotificationPreference
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -957,4 +958,104 @@ export async function notifyUsersWithPageAccess(
       metadata,
     });
   }
+}
+
+
+// ==================== FAVORITES ====================
+
+/**
+ * Add a page to user's favorites
+ */
+export async function addToFavorites(userId: number, pageId: number): Promise<{ id: number } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Check if already favorited
+  const existing = await db.select()
+    .from(favorites)
+    .where(and(eq(favorites.userId, userId), eq(favorites.pageId, pageId)))
+    .limit(1);
+  
+  if (existing.length > 0) {
+    return { id: existing[0].id };
+  }
+  
+  const result = await db.insert(favorites).values({
+    userId,
+    pageId,
+  });
+  
+  return { id: Number(result[0].insertId) };
+}
+
+/**
+ * Remove a page from user's favorites
+ */
+export async function removeFromFavorites(userId: number, pageId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db.delete(favorites)
+    .where(and(eq(favorites.userId, userId), eq(favorites.pageId, pageId)));
+  
+  return true;
+}
+
+/**
+ * Check if a page is in user's favorites
+ */
+export async function isPageFavorited(userId: number, pageId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const result = await db.select({ id: favorites.id })
+    .from(favorites)
+    .where(and(eq(favorites.userId, userId), eq(favorites.pageId, pageId)))
+    .limit(1);
+  
+  return result.length > 0;
+}
+
+/**
+ * Get user's favorite pages with page details
+ */
+export async function getUserFavorites(userId: number): Promise<Array<{
+  id: number;
+  pageId: number;
+  pageTitle: string;
+  pageIcon: string | null;
+  pageSlug: string;
+  createdAt: Date;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select({
+    id: favorites.id,
+    pageId: favorites.pageId,
+    pageTitle: pages.title,
+    pageIcon: pages.icon,
+    pageSlug: pages.slug,
+    createdAt: favorites.createdAt,
+  })
+    .from(favorites)
+    .innerJoin(pages, eq(favorites.pageId, pages.id))
+    .where(eq(favorites.userId, userId))
+    .orderBy(desc(favorites.createdAt));
+  
+  return result;
+}
+
+/**
+ * Get favorite page IDs for a user (for batch checking)
+ */
+export async function getUserFavoritePageIds(userId: number): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select({ pageId: favorites.pageId })
+    .from(favorites)
+    .where(eq(favorites.userId, userId));
+  
+  return result.map(r => r.pageId);
 }

@@ -3,6 +3,8 @@ import { useLocation, useParams } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { WikiEditor } from "@/components/WikiEditor";
+import { FavoriteButton } from "@/components/FavoriteButton";
+import { FavoritesSidebar } from "@/components/FavoritesSidebar";
 import { PageTree } from "@/components/PageTree";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +55,8 @@ import {
   Lock,
   Search,
   LogIn,
+  Download,
+  FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -160,6 +164,7 @@ export default function Wiki() {
   });
   
   const uploadMedia = trpc.media.upload.useMutation();
+  const exportMarkdown = trpc.markdown.exportPage.useMutation();
   
   // Effects
   useEffect(() => {
@@ -379,6 +384,12 @@ export default function Wiki() {
             )}
           >
             <ScrollArea className="h-full">
+              {user && (
+                <>
+                  <FavoritesSidebar />
+                  <div className="border-t" />
+                </>
+              )}
               <PageTree
                 selectedPageId={currentPage?.id}
                 onSelectPage={(page) => setLocation(`/wiki/${page.slug}`)}
@@ -428,6 +439,10 @@ export default function Wiki() {
                     </div>
                     
                     <div className="flex items-center gap-2 shrink-0">
+                      {currentPage && (
+                        <FavoriteButton pageId={currentPage.id} />
+                      )}
+                      
                       {canEdit && hasChanges && (
                         <Button
                           size="sm"
@@ -460,6 +475,26 @@ export default function Wiki() {
                           }}>
                             <Share2 className="h-4 w-4 mr-2" />
                             Copy Link
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={async () => {
+                            if (!currentPage) return;
+                            try {
+                              const result = await exportMarkdown.mutateAsync({ pageId: currentPage.id });
+                              const blob = new Blob([result.content], { type: 'text/markdown' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = result.filename;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                              toast.success('Exported to Markdown');
+                            } catch (error) {
+                              toast.error('Failed to export');
+                            }
+                          }}>
+                            <FileDown className="h-4 w-4 mr-2" />
+                            Export to Markdown
                           </DropdownMenuItem>
                           {isAdmin && (
                             <>

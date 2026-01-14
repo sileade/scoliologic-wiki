@@ -219,4 +219,17 @@
 - [x] Integrate notifications into page update flow
 - [x] Add real-time notifications via WebSocket
 - [x] Update README with notification system documentation
+- [x] Push changes to GitHub
+
+
+## Favorites and Markdown Export
+- [x] Create favorites table in database schema
+- [x] Add favorites functions to db.ts
+- [x] Implement favorites API (add, remove, list)
+- [x] Create FavoriteButton UI component
+- [x] Add favorites section to sidebar
+- [x] Implement Markdown export for single page
+- [x] Implement Markdown export for multiple pages
+- [x] Add export button to page actions
+- [x] Update README with new features
 - [ ] Push changes to GitHub
