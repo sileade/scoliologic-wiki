@@ -237,6 +237,28 @@ export default function Wiki() {
     });
   };
   
+  const handleVideoUpload = async (file: File): Promise<string> => {
+    const reader = new FileReader();
+    return new Promise((resolve, reject) => {
+      reader.onload = async () => {
+        try {
+          const base64 = (reader.result as string).split(",")[1];
+          const result = await uploadMedia.mutateAsync({
+            filename: file.name,
+            mimeType: file.type,
+            base64Data: base64,
+            pageId: currentPage?.id,
+          });
+          resolve(result.url);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+  
   const handleRollback = (version: number) => {
     if (!currentPage) return;
     rollbackPage.mutate({ pageId: currentPage.id, version });
@@ -459,6 +481,7 @@ export default function Wiki() {
                         onChange={handleContentChange}
                         editable={canEdit}
                         onImageUpload={canEdit ? handleImageUpload : undefined}
+                        onVideoUpload={canEdit ? handleVideoUpload : undefined}
                       />
                     </div>
                   </ScrollArea>

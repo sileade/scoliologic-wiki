@@ -23,7 +23,7 @@ import {
   Heading1, Heading2, Heading3, List, ListOrdered, CheckSquare,
   Code, Quote, Image as ImageIcon, Link as LinkIcon, Table as TableIcon,
   AlignLeft, AlignCenter, AlignRight, Highlighter, Undo, Redo,
-  Type, Sparkles, Loader2
+  Type, Sparkles, Loader2, Video as VideoIcon, Upload
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -37,9 +37,20 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { Video, insertVideo, detectVideoType, isValidVideoUrl } from "./VideoExtension";
 
 const lowlight = createLowlight(common);
 
@@ -50,6 +61,7 @@ interface WikiEditorProps {
   editable?: boolean;
   placeholder?: string;
   onImageUpload?: (file: File) => Promise<string>;
+  onVideoUpload?: (file: File) => Promise<string>;
 }
 
 export function WikiEditor({
@@ -59,10 +71,15 @@ export function WikiEditor({
   editable = true,
   placeholder = "Start writing... Use the toolbar above for formatting",
   onImageUpload,
+  onVideoUpload,
 }: WikiEditorProps) {
   const [linkUrl, setLinkUrl] = useState("");
   const [showLinkPopover, setShowLinkPopover] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [showVideoDialog, setShowVideoDialog] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoTitle, setVideoTitle] = useState("");
+  const [videoUploading, setVideoUploading] = useState(false);
   
   const aiAssist = trpc.ai.assist.useMutation();
 
@@ -110,6 +127,7 @@ export function WikiEditor({
       Underline,
       TextStyle,
       Color,
+      Video,
     ],
     content: contentJson || content || "",
     editable,
@@ -141,6 +159,43 @@ export function WikiEditor({
     };
     input.click();
   }, [editor, onImageUpload]);
+
+  const handleVideoUpload = useCallback(async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "video/*";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file && onVideoUpload && editor) {
+        setVideoUploading(true);
+        try {
+          const url = await onVideoUpload(file);
+          insertVideo(editor, { src: url, type: "s3", title: file.name });
+        } catch (error) {
+          console.error("Video upload error:", error);
+        } finally {
+          setVideoUploading(false);
+        }
+      }
+    };
+    input.click();
+  }, [editor, onVideoUpload]);
+
+  const handleInsertVideoUrl = useCallback(() => {
+    if (!editor || !videoUrl) return;
+    
+    if (!isValidVideoUrl(videoUrl)) {
+      alert("Please enter a valid video URL (RuTube or direct video link)");
+      return;
+    }
+    
+    const type = detectVideoType(videoUrl);
+    insertVideo(editor, { src: videoUrl, type, title: videoTitle || undefined });
+    
+    setShowVideoDialog(false);
+    setVideoUrl("");
+    setVideoTitle("");
+  }, [editor, videoUrl, videoTitle]);
 
   const setLink = useCallback(() => {
     if (linkUrl) {
@@ -410,6 +465,38 @@ export function WikiEditor({
           >
             <ImageIcon className="h-4 w-4" />
           </Button>
+          
+          {/* Video Button */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                title="Insert Video"
+                disabled={videoUploading}
+              >
+                {videoUploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <VideoIcon className="h-4 w-4" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => setShowVideoDialog(true)}>
+                <LinkIcon className="h-4 w-4 mr-2" />
+                Insert from URL (RuTube / S3)
+              </DropdownMenuItem>
+              {onVideoUpload && (
+                <DropdownMenuItem onClick={handleVideoUpload}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Video to S3
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
           <Button
             variant="ghost"
             size="sm"
@@ -458,6 +545,80 @@ export function WikiEditor({
         </div>
       )}
 
+      {/* Video Insert Dialog */}
+      <Dialog open={showVideoDialog} onOpenChange={setShowVideoDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Insert Video</DialogTitle>
+            <DialogDescription>
+              Add a video from RuTube or a direct URL (S3, CDN, etc.)
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs defaultValue="url" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="url">Video URL</TabsTrigger>
+              <TabsTrigger value="rutube">RuTube</TabsTrigger>
+            </TabsList>
+            <TabsContent value="url" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="video-url">Video URL</Label>
+                <Input
+                  id="video-url"
+                  placeholder="https://storage.example.com/video.mp4"
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Supports MP4, WebM, OGG formats from S3 or any direct URL
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="video-title">Title (optional)</Label>
+                <Input
+                  id="video-title"
+                  placeholder="Video description"
+                  value={videoTitle}
+                  onChange={(e) => setVideoTitle(e.target.value)}
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value="rutube" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="rutube-url">RuTube Video URL</Label>
+                <Input
+                  id="rutube-url"
+                  placeholder="https://rutube.ru/video/abc123..."
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Paste the RuTube video page URL. Supported formats:
+                  <br />• rutube.ru/video/VIDEO_ID
+                  <br />• rutube.ru/shorts/VIDEO_ID
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rutube-title">Title (optional)</Label>
+                <Input
+                  id="rutube-title"
+                  placeholder="Video description"
+                  value={videoTitle}
+                  onChange={(e) => setVideoTitle(e.target.value)}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowVideoDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleInsertVideoUrl} disabled={!videoUrl}>
+              Insert Video
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Editor Content */}
       <EditorContent
         editor={editor}
@@ -480,6 +641,7 @@ export function WikiEditor({
           "[&_ul[data-type='taskList']]:list-none [&_ul[data-type='taskList']]:pl-0",
           "[&_ul[data-type='taskList']_li]:flex [&_ul[data-type='taskList']_li]:items-start [&_ul[data-type='taskList']_li]:gap-2",
           "[&_ul[data-type='taskList']_li_label]:mt-0.5",
+          "[&_.video-wrapper]:my-4",
           "min-h-[400px]",
           !editable && "cursor-default"
         )}
