@@ -59,10 +59,15 @@ import {
   Loader2,
   Check,
   X,
+  RefreshCw,
+  Link2,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
+import { AuthentikSyncPanel } from "@/components/AuthentikSyncPanel";
 import { useTranslation } from "react-i18next";
 import { useLocalizedError } from "@/hooks/useLocalizedError";
 
@@ -254,6 +259,10 @@ export default function Admin() {
             <TabsTrigger value="analytics">
               <Activity className="h-4 w-4 mr-2" />
               {t("admin.analytics")}
+            </TabsTrigger>
+            <TabsTrigger value="authentik">
+              <Link2 className="h-4 w-4 mr-2" />
+              Authentik
             </TabsTrigger>
           </TabsList>
           
@@ -659,6 +668,11 @@ export default function Admin() {
           {/* Analytics Tab */}
           <TabsContent value="analytics">
             <AnalyticsDashboard />
+          </TabsContent>
+          
+          {/* Authentik Tab */}
+          <TabsContent value="authentik">
+            <AuthentikSyncPanel />
           </TabsContent>
         </Tabs>
       </main>

@@ -5,6 +5,8 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerAuthentikOAuthRoutes } from "../authentikOAuth";
+import { startAuthentikSyncSchedule } from "../authentik";
+import { ENV } from "./env";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -70,6 +72,13 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    
+    // Start Authentik sync schedule if enabled
+    if (ENV.authentikEnabled) {
+      const syncIntervalMinutes = parseInt(process.env.AUTHENTIK_SYNC_INTERVAL || "60");
+      startAuthentikSyncSchedule(syncIntervalMinutes);
+      console.log(`[Authentik] Auto-sync enabled (every ${syncIntervalMinutes} minutes)`);
+    }
   });
 }
 
