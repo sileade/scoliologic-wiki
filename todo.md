@@ -247,4 +247,4 @@
 - [x] Add tags display to page header
 - [x] Add tags filter to search
 - [x] Update README with new features
-- [ ] Push changes to GitHub
+- [x] Push changes to GitHub
