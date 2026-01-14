@@ -104,7 +104,7 @@ export default function Admin() {
       setCreateGroupOpen(false);
       setNewGroupName("");
       setNewGroupDescription("");
-      toast.success("Group created successfully");
+      toast.success(t("admin.groupCreated"));
     },
   });
   
@@ -113,14 +113,14 @@ export default function Admin() {
       utils.groups.list.invalidate();
       setEditGroupOpen(false);
       setSelectedGroup(null);
-      toast.success("Group updated successfully");
+      toast.success(t("admin.groupUpdated"));
     },
   });
   
   const deleteGroup = trpc.groups.delete.useMutation({
     onSuccess: () => {
       utils.groups.list.invalidate();
-      toast.success("Group deleted successfully");
+      toast.success(t("admin.groupDeleted"));
     },
   });
   
@@ -129,28 +129,28 @@ export default function Admin() {
       utils.groups.getMembers.invalidate({ groupId: selectedGroup?.id });
       setAddMemberOpen(false);
       setSelectedUserId("");
-      toast.success("Member added successfully");
+      toast.success(t("admin.memberAdded"));
     },
   });
   
   const removeMember = trpc.groups.removeMember.useMutation({
     onSuccess: () => {
       utils.groups.getMembers.invalidate({ groupId: selectedGroup?.id });
-      toast.success("Member removed successfully");
+      toast.success(t("admin.memberRemoved"));
     },
   });
   
   const updateUserRole = trpc.users.updateRole.useMutation({
     onSuccess: () => {
       utils.users.list.invalidate();
-      toast.success("User role updated successfully");
+      toast.success(t("admin.roleUpdated"));
     },
   });
   
   const handleAccessRequest = trpc.admin.handleAccessRequest.useMutation({
     onSuccess: () => {
       utils.admin.getPendingAccessRequests.invalidate();
-      toast.success("Access request handled");
+      toast.success(t("admin.requestHandled"));
     },
   });
   

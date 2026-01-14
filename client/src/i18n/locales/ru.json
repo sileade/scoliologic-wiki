@@ -37,6 +37,7 @@
     "update": "Обновить",
     "apply": "Применить",
     "clear": "Очистить",
+    "copied": "Скопировано в буфер обмена",
     "language": "Язык",
     "theme": "Тема",
     "darkTheme": "Тёмная тема",
@@ -95,6 +96,7 @@
     "history": "История",
     "viewHistory": "Просмотр истории",
     "restoreVersion": "Восстановить версию",
+    "versionRestored": "Версия восстановлена",
     "public": "Публичная",
     "private": "Приватная",
     "visibility": "Видимость",
@@ -146,7 +148,12 @@
     "insertTable": "Вставить таблицу",
     "clearFormatting": "Очистить форматирование",
     "undo": "Отменить",
-    "redo": "Повторить"
+    "redo": "Повторить",
+    "text": "Текст",
+    "highlight": "Выделение",
+    "alignLeft": "По левому краю",
+    "alignCenter": "По центру",
+    "alignRight": "По правому краю"
   },
   "search": {
     "title": "Поиск",
@@ -258,7 +265,14 @@
     "syncNow": "Синхронизировать сейчас",
     "syncInProgress": "Синхронизация...",
     "syncSuccess": "Синхронизация завершена",
-    "syncError": "Ошибка синхронизации"
+    "syncError": "Ошибка синхронизации",
+    "groupCreated": "Группа успешно создана",
+    "groupUpdated": "Группа успешно обновлена",
+    "groupDeleted": "Группа успешно удалена",
+    "memberAdded": "Участник добавлен",
+    "memberRemoved": "Участник удалён",
+    "roleUpdated": "Роль обновлена",
+    "requestHandled": "Запрос обработан"
   },
   "notifications": {
     "title": "Уведомления",

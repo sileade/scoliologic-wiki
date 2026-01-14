@@ -37,6 +37,7 @@
     "update": "Update",
     "apply": "Apply",
     "clear": "Clear",
+    "copied": "Copied to clipboard",
     "language": "Language",
     "theme": "Theme",
     "darkTheme": "Dark theme",
@@ -95,6 +96,7 @@
     "history": "History",
     "viewHistory": "View history",
     "restoreVersion": "Restore version",
+    "versionRestored": "Version restored successfully",
     "public": "Public",
     "private": "Private",
     "visibility": "Visibility",
@@ -146,7 +148,12 @@
     "insertTable": "Insert table",
     "clearFormatting": "Clear formatting",
     "undo": "Undo",
-    "redo": "Redo"
+    "redo": "Redo",
+    "text": "Text",
+    "highlight": "Highlight",
+    "alignLeft": "Align left",
+    "alignCenter": "Align center",
+    "alignRight": "Align right"
   },
   "search": {
     "title": "Search",
@@ -258,7 +265,14 @@
     "syncNow": "Sync now",
     "syncInProgress": "Syncing...",
     "syncSuccess": "Sync completed",
-    "syncError": "Sync error"
+    "syncError": "Sync error",
+    "groupCreated": "Group created successfully",
+    "groupUpdated": "Group updated successfully",
+    "groupDeleted": "Group deleted successfully",
+    "memberAdded": "Member added successfully",
+    "memberRemoved": "Member removed successfully",
+    "roleUpdated": "Role updated successfully",
+    "requestHandled": "Request handled successfully"
   },
   "notifications": {
     "title": "Notifications",

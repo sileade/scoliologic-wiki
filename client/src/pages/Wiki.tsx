@@ -124,7 +124,7 @@ export default function Wiki() {
       setNewPageTitle("");
       setNewPageParentId(undefined);
       setLocation(`/wiki/${data.slug}`);
-      toast.success("Page created successfully");
+      toast.success(t("wiki.pageCreated"));
     },
     onError: (error) => {
       toast.error(error.message);
@@ -136,7 +136,7 @@ export default function Wiki() {
       utils.pages.getBySlug.invalidate({ slug: params.slug });
       utils.pages.getRootPages.invalidate();
       setHasChanges(false);
-      toast.success("Page saved successfully");
+      toast.success(t("wiki.pageUpdated"));
     },
     onError: (error) => {
       toast.error(error.message);
@@ -150,7 +150,7 @@ export default function Wiki() {
       setDeleteDialogOpen(false);
       setPageToDelete(null);
       setLocation("/wiki");
-      toast.success("Page deleted successfully");
+      toast.success(t("wiki.pageDeleted"));
     },
     onError: (error) => {
       toast.error(error.message);
@@ -161,7 +161,7 @@ export default function Wiki() {
     onSuccess: () => {
       utils.pages.getBySlug.invalidate({ slug: params.slug });
       setHistoryDialogOpen(false);
-      toast.success("Page rolled back successfully");
+      toast.success(t("wiki.versionRestored"));
     },
     onError: (error) => {
       toast.error(error.message);
@@ -481,7 +481,7 @@ export default function Wiki() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => {
                             navigator.clipboard.writeText(window.location.href);
-                            toast.success("Link copied to clipboard");
+                            toast.success(t("common.copied"));
                           }}>
                             <Share2 className="h-4 w-4 mr-2" />
                             Copy Link
@@ -498,9 +498,9 @@ export default function Wiki() {
                               a.download = result.filename;
                               a.click();
                               URL.revokeObjectURL(url);
-                              toast.success('Exported to Markdown');
+                              toast.success(t("export.exportSuccess"));
                             } catch (error) {
-                              toast.error('Failed to export');
+                              toast.error(t("export.exportError"));
                             }
                           }}>
                             <FileDown className="h-4 w-4 mr-2" />

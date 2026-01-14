@@ -24,6 +24,12 @@ i18n
       order: ['localStorage', 'navigator', 'htmlTag'],
       caches: ['localStorage'],
       lookupLocalStorage: 'wiki-language',
+      convertDetectedLanguage: (lng: string) => {
+        // Преобразование языковых кодов в поддерживаемые
+        if (lng.startsWith('ru')) return 'ru';
+        if (lng.startsWith('en')) return 'en';
+        return 'ru'; // Русский по умолчанию
+      },
     },
   });
 

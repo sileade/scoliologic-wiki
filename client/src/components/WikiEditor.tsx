@@ -50,6 +50,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 import { Video, insertVideo, detectVideoType, isValidVideoUrl } from "./VideoExtension";
 
 const lowlight = createLowlight(common);
@@ -73,6 +74,7 @@ export function WikiEditor({
   onImageUpload,
   onVideoUpload,
 }: WikiEditorProps) {
+  const { t } = useTranslation();
   const [linkUrl, setLinkUrl] = useState("");
   const [showLinkPopover, setShowLinkPopover] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -247,7 +249,7 @@ export function WikiEditor({
             className="h-8 w-8 p-0"
             onClick={() => editor.chain().focus().undo().run()}
             disabled={!editor.can().undo()}
-            title="Undo"
+            title={t("editor.undo")}
           >
             <Undo className="h-4 w-4" />
           </Button>
@@ -257,7 +259,7 @@ export function WikiEditor({
             className="h-8 w-8 p-0"
             onClick={() => editor.chain().focus().redo().run()}
             disabled={!editor.can().redo()}
-            title="Redo"
+            title={t("editor.redo")}
           >
             <Redo className="h-4 w-4" />
           </Button>
@@ -268,26 +270,26 @@ export function WikiEditor({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="h-8 px-2">
                 <Type className="h-4 w-4 mr-1" />
-                Text
+                {t("editor.text")}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>
                 <Type className="h-4 w-4 mr-2" />
-                Paragraph
+                {t("editor.paragraph")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
                 <Heading1 className="h-4 w-4 mr-2" />
-                Heading 1
+                {t("editor.heading1")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
                 <Heading2 className="h-4 w-4 mr-2" />
-                Heading 2
+                {t("editor.heading2")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
                 <Heading3 className="h-4 w-4 mr-2" />
-                Heading 3
+                {t("editor.heading3")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -299,7 +301,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("bold") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleBold().run()}
-            title="Bold"
+            title={t("editor.bold")}
           >
             <Bold className="h-4 w-4" />
           </Button>
@@ -308,7 +310,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("italic") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleItalic().run()}
-            title="Italic"
+            title={t("editor.italic")}
           >
             <Italic className="h-4 w-4" />
           </Button>
@@ -317,7 +319,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("underline") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleUnderline().run()}
-            title="Underline"
+            title={t("editor.underline")}
           >
             <UnderlineIcon className="h-4 w-4" />
           </Button>
@@ -326,7 +328,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("strike") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleStrike().run()}
-            title="Strikethrough"
+            title={t("editor.strikethrough")}
           >
             <Strikethrough className="h-4 w-4" />
           </Button>
@@ -335,7 +337,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("highlight") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleHighlight().run()}
-            title="Highlight"
+            title={t("editor.highlight")}
           >
             <Highlighter className="h-4 w-4" />
           </Button>
@@ -344,7 +346,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("code") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleCode().run()}
-            title="Inline Code"
+            title={t("editor.code")}
           >
             <Code className="h-4 w-4" />
           </Button>
@@ -356,7 +358,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("bulletList") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleBulletList().run()}
-            title="Bullet List"
+            title={t("editor.bulletList")}
           >
             <List className="h-4 w-4" />
           </Button>
@@ -365,7 +367,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("orderedList") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            title="Numbered List"
+            title={t("editor.numberedList")}
           >
             <ListOrdered className="h-4 w-4" />
           </Button>
@@ -374,7 +376,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("taskList") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleTaskList().run()}
-            title="Task List"
+            title={t("editor.taskList")}
           >
             <CheckSquare className="h-4 w-4" />
           </Button>
@@ -386,7 +388,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive({ textAlign: "left" }) && "bg-muted")}
             onClick={() => editor.chain().focus().setTextAlign("left").run()}
-            title="Align Left"
+            title={t("editor.alignLeft")}
           >
             <AlignLeft className="h-4 w-4" />
           </Button>
@@ -395,7 +397,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive({ textAlign: "center" }) && "bg-muted")}
             onClick={() => editor.chain().focus().setTextAlign("center").run()}
-            title="Align Center"
+            title={t("editor.alignCenter")}
           >
             <AlignCenter className="h-4 w-4" />
           </Button>
@@ -404,7 +406,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive({ textAlign: "right" }) && "bg-muted")}
             onClick={() => editor.chain().focus().setTextAlign("right").run()}
-            title="Align Right"
+            title={t("editor.alignRight")}
           >
             <AlignRight className="h-4 w-4" />
           </Button>
@@ -416,7 +418,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("codeBlock") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-            title="Code Block"
+            title={t("editor.codeBlock")}
           >
             <Code className="h-4 w-4" />
           </Button>
@@ -425,7 +427,7 @@ export function WikiEditor({
             size="sm"
             className={cn("h-8 w-8 p-0", editor.isActive("blockquote") && "bg-muted")}
             onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            title="Quote"
+            title={t("editor.blockquote")}
           >
             <Quote className="h-4 w-4" />
           </Button>
@@ -436,7 +438,7 @@ export function WikiEditor({
                 variant="ghost"
                 size="sm"
                 className={cn("h-8 w-8 p-0", editor.isActive("link") && "bg-muted")}
-                title="Link"
+                title={t("editor.link")}
               >
                 <LinkIcon className="h-4 w-4" />
               </Button>
@@ -461,7 +463,7 @@ export function WikiEditor({
             size="sm"
             className="h-8 w-8 p-0"
             onClick={handleImageUpload}
-            title="Insert Image"
+            title={t("editor.insertImage")}
           >
             <ImageIcon className="h-4 w-4" />
           </Button>
@@ -473,7 +475,7 @@ export function WikiEditor({
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0"
-                title="Insert Video"
+                title={t("editor.insertVideo")}
                 disabled={videoUploading}
               >
                 {videoUploading ? (
@@ -502,7 +504,7 @@ export function WikiEditor({
             size="sm"
             className="h-8 w-8 p-0"
             onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-            title="Insert Table"
+            title={t("editor.insertTable")}
           >
             <TableIcon className="h-4 w-4" />
           </Button>
@@ -526,19 +528,19 @@ export function WikiEditor({
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => handleAiAction("improve")}>
                 <Sparkles className="h-4 w-4 mr-2" />
-                Improve Writing
+                {t("ai.improve")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleAiAction("expand")}>
                 <Sparkles className="h-4 w-4 mr-2" />
-                Expand Text
+                {t("ai.expand")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleAiAction("summarize")}>
                 <Sparkles className="h-4 w-4 mr-2" />
-                Summarize
+                {t("ai.summarize")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleAiAction("grammar")}>
                 <Sparkles className="h-4 w-4 mr-2" />
-                Fix Grammar
+                {t("ai.fixGrammar")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -549,17 +551,17 @@ export function WikiEditor({
       <Dialog open={showVideoDialog} onOpenChange={setShowVideoDialog}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Insert Video</DialogTitle>
+            <DialogTitle>{t("editor.insertVideo")}</DialogTitle>
             <DialogDescription>
-              Add a video from RuTube or a direct URL (S3, CDN, etc.)
+              {t("editor.videoSource")}
             </DialogDescription>
           </DialogHeader>
           <Tabs defaultValue="url" className="w-full">
             <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="url">Video URL</TabsTrigger>
-              <TabsTrigger value="youtube">YouTube</TabsTrigger>
-              <TabsTrigger value="rutube">RuTube</TabsTrigger>
-              <TabsTrigger value="vk">VK Video</TabsTrigger>
+              <TabsTrigger value="url">{t("editor.video")}</TabsTrigger>
+              <TabsTrigger value="youtube">{t("editor.youtube")}</TabsTrigger>
+              <TabsTrigger value="rutube">{t("editor.rutube")}</TabsTrigger>
+              <TabsTrigger value="vk">{t("editor.vkVideo")}</TabsTrigger>
             </TabsList>
             <TabsContent value="url" className="space-y-4">
               <div className="space-y-2">
