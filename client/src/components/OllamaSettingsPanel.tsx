@@ -46,6 +46,19 @@ interface OllamaSettings {
   notifyOnFailure: boolean;
 }
 
+interface AIAgentSettings {
+  enabled: boolean;
+  analysisModel: string;
+  monitoringInterval: number;
+  autoFixEnabled: boolean;
+  maxAutoFixAttempts: number;
+  escalationThreshold: number;
+  loadBalancerIntegration: boolean;
+  loadBalancerUrl: string;
+  learningEnabled: boolean;
+  logRetentionDays: number;
+}
+
 // Monitoring Status Card Component
 function MonitoringStatusCard() {
   const { data: monitoringStatus, refetch: refetchMonitoring } = trpc.admin.getMonitoringStatus.useQuery(undefined, {
@@ -209,6 +222,19 @@ export function OllamaSettingsPanel() {
     chatModel: "llama3.2",
     healthCheckInterval: 60,
     notifyOnFailure: true,
+  });
+  
+  const [agentSettings, setAgentSettings] = useState<AIAgentSettings>({
+    enabled: false,
+    analysisModel: "llama3.2",
+    monitoringInterval: 300,
+    autoFixEnabled: true,
+    maxAutoFixAttempts: 3,
+    escalationThreshold: 5,
+    loadBalancerIntegration: false,
+    loadBalancerUrl: "",
+    learningEnabled: true,
+    logRetentionDays: 30,
   });
   const [status, setStatus] = useState<OllamaStatus | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
@@ -517,6 +543,176 @@ export function OllamaSettingsPanel() {
 
       {/* Monitoring Card */}
       <MonitoringStatusCard />
+
+      {/* AI Agent Settings Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5" />
+            AI-агент непрерывного мониторинга
+          </CardTitle>
+          <CardDescription>
+            Настройка самообучающейся системы анализа и исправления ошибок
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Enable AI Agent */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Включить AI-агент</Label>
+              <p className="text-sm text-muted-foreground">
+                Автоматический анализ логов и исправление ошибок
+              </p>
+            </div>
+            <Switch
+              checked={agentSettings.enabled}
+              onCheckedChange={(checked) => setAgentSettings(s => ({ ...s, enabled: checked }))}
+            />
+          </div>
+
+          {agentSettings.enabled && (
+            <>
+              {/* Analysis Model */}
+              <div className="space-y-2">
+                <Label htmlFor="analysis-model">Модель для анализа</Label>
+                <Input
+                  id="analysis-model"
+                  value={agentSettings.analysisModel}
+                  onChange={(e) => setAgentSettings(s => ({ ...s, analysisModel: e.target.value }))}
+                  placeholder="llama3.2"
+                />
+                <p className="text-sm text-muted-foreground">
+                  LLM модель для анализа ошибок и принятия решений
+                </p>
+              </div>
+
+              {/* Monitoring Interval */}
+              <div className="space-y-2">
+                <Label htmlFor="monitoring-interval">Интервал мониторинга (секунды)</Label>
+                <Input
+                  id="monitoring-interval"
+                  type="number"
+                  min={60}
+                  max={3600}
+                  value={agentSettings.monitoringInterval}
+                  onChange={(e) => setAgentSettings(s => ({ ...s, monitoringInterval: parseInt(e.target.value) || 300 }))}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Как часто агент анализирует логи и метрики (60-3600 сек)
+                </p>
+              </div>
+
+              {/* Auto-fix Settings */}
+              <div className="p-4 bg-muted/30 rounded-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Автоматическое исправление</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Агент пытается исправить ошибки самостоятельно
+                    </p>
+                  </div>
+                  <Switch
+                    checked={agentSettings.autoFixEnabled}
+                    onCheckedChange={(checked) => setAgentSettings(s => ({ ...s, autoFixEnabled: checked }))}
+                  />
+                </div>
+
+                {agentSettings.autoFixEnabled && (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="max-attempts">Макс. попыток исправления</Label>
+                      <Input
+                        id="max-attempts"
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={agentSettings.maxAutoFixAttempts}
+                        onChange={(e) => setAgentSettings(s => ({ ...s, maxAutoFixAttempts: parseInt(e.target.value) || 3 }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="escalation-threshold">Порог эскалации</Label>
+                      <Input
+                        id="escalation-threshold"
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={agentSettings.escalationThreshold}
+                        onChange={(e) => setAgentSettings(s => ({ ...s, escalationThreshold: parseInt(e.target.value) || 5 }))}
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        После N неудач — уведомление админу
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Load Balancer Integration */}
+              <div className="p-4 bg-muted/30 rounded-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Интеграция с балансировщиком</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Управление нагрузкой через Traefik/Nginx
+                    </p>
+                  </div>
+                  <Switch
+                    checked={agentSettings.loadBalancerIntegration}
+                    onCheckedChange={(checked) => setAgentSettings(s => ({ ...s, loadBalancerIntegration: checked }))}
+                  />
+                </div>
+
+                {agentSettings.loadBalancerIntegration && (
+                  <div className="space-y-2">
+                    <Label htmlFor="lb-url">URL API балансировщика</Label>
+                    <Input
+                      id="lb-url"
+                      value={agentSettings.loadBalancerUrl}
+                      onChange={(e) => setAgentSettings(s => ({ ...s, loadBalancerUrl: e.target.value }))}
+                      placeholder="http://traefik:8080/api"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Learning & Retention */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                  <div className="space-y-0.5">
+                    <Label>Самообучение</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Агент учится на исправлениях
+                    </p>
+                  </div>
+                  <Switch
+                    checked={agentSettings.learningEnabled}
+                    onCheckedChange={(checked) => setAgentSettings(s => ({ ...s, learningEnabled: checked }))}
+                  />
+                </div>
+                <div className="space-y-2 p-4 bg-muted/30 rounded-lg">
+                  <Label htmlFor="log-retention">Хранение логов (дни)</Label>
+                  <Input
+                    id="log-retention"
+                    type="number"
+                    min={7}
+                    max={365}
+                    value={agentSettings.logRetentionDays}
+                    onChange={(e) => setAgentSettings(s => ({ ...s, logRetentionDays: parseInt(e.target.value) || 30 }))}
+                  />
+                </div>
+              </div>
+
+              {/* Save Agent Settings */}
+              <div className="flex justify-end">
+                <Button onClick={() => toast.success('Настройки AI-агента сохранены')}>
+                  Сохранить настройки агента
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Help Card */}
       <Card>

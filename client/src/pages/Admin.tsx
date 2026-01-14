@@ -230,9 +230,11 @@ export default function Admin() {
       </header>
       
       {/* Content */}
-      <main className="container py-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6">
+      <main className="flex-1 overflow-hidden">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+          <div className="border-b bg-background px-6 py-4">
+            <ScrollArea className="w-full">
+              <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-max">
             <TabsTrigger value="dashboard">
               <Activity className="h-4 w-4 mr-2" />
               {t("admin.dashboard")}
@@ -274,10 +276,13 @@ export default function Admin() {
               <Activity className="h-4 w-4 mr-2" />
               Ollama AI
             </TabsTrigger>
-          </TabsList>
+              </TabsList>
+            </ScrollArea>
+          </div>
           
+          <div className="flex-1 overflow-auto p-6">
           {/* Dashboard Tab */}
-          <TabsContent value="dashboard">
+          <TabsContent value="dashboard" className="mt-0">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -690,9 +695,10 @@ export default function Admin() {
           </TabsContent>
           
           {/* Ollama Tab */}
-          <TabsContent value="ollama">
+          <TabsContent value="ollama" className="mt-0">
             <OllamaSettingsPanel />
           </TabsContent>
+          </div>
         </Tabs>
       </main>
       
