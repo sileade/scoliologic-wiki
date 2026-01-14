@@ -9,6 +9,7 @@ import { invokeLLM } from "./_core/llm";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as ollama from "./ollama";
+import * as monitoring from "./monitoring";
 import * as authentik from "./authentik";
 import { ENV } from "./_core/env";
 import { generatePDF, generateMultiPagePDF } from "./pdf";
@@ -1092,6 +1093,67 @@ export const appRouter = router({
         });
         return { success: true };
       }),
+
+    // Ollama settings and health check
+    getOllamaSettings: adminProcedure.query(async () => {
+      const settings = await db.getOllamaSettings();
+      return {
+        enabled: settings?.enabled ?? true,
+        url: settings?.url ?? "http://localhost:11434",
+        embeddingModel: settings?.embeddingModel ?? "nomic-embed-text",
+        chatModel: settings?.chatModel ?? "llama3.2",
+        healthCheckInterval: settings?.healthCheckInterval ?? 60,
+        notifyOnFailure: settings?.notifyOnFailure ?? true,
+      };
+    }),
+
+    saveOllamaSettings: adminProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        url: z.string(),
+        embeddingModel: z.string(),
+        chatModel: z.string(),
+        healthCheckInterval: z.number().min(10).max(3600),
+        notifyOnFailure: z.boolean(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.saveOllamaSettings(input);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_ollama_settings",
+          entityType: "settings",
+          details: { enabled: input.enabled, url: input.url },
+        });
+        return { success: true };
+      }),
+
+    testOllamaConnection: adminProcedure
+      .input(z.object({
+        url: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        return ollama.testConnection(input.url);
+      }),
+
+    getOllamaHealth: adminProcedure.query(async () => {
+      const settings = await db.getOllamaSettings();
+      const url = settings?.url ?? "http://localhost:11434";
+      return ollama.getHealthStatus(url);
+    }),
+
+    // Monitoring endpoints
+    getMonitoringStatus: adminProcedure.query(async () => {
+      return monitoring.getMonitoringStatus();
+    }),
+
+    getErrorStats: adminProcedure.query(async () => {
+      return monitoring.getErrorStats();
+    }),
+
+    triggerHealthCheck: adminProcedure.mutation(async () => {
+      await monitoring.performHealthCheck();
+      return { success: true };
+    }),
   }),
 
   // ============ ACCESS REQUESTS ============

@@ -342,3 +342,64 @@ ${text}`;
 
   return generateText(prompt, { temperature: 0.3, maxTokens: Math.ceil(targetLength * 1.5) });
 }
+
+
+/**
+ * Test connection to Ollama server at specific URL
+ */
+export async function testConnection(url: string): Promise<{
+  connected: boolean;
+  version?: string;
+  models?: string[];
+  error?: string;
+  responseTime?: number;
+}> {
+  const startTime = Date.now();
+  try {
+    const client = axios.create({
+      baseURL: url,
+      timeout: 10000,
+    });
+    
+    // Get version info
+    const versionResponse = await client.get("/api/version");
+    const responseTime = Date.now() - startTime;
+    
+    // Get available models
+    const modelsResponse = await client.get("/api/tags");
+    const models = modelsResponse.data.models?.map((m: { name: string }) => m.name) || [];
+    
+    return {
+      connected: true,
+      version: versionResponse.data.version || "unknown",
+      models,
+      responseTime,
+    };
+  } catch (error: unknown) {
+    const responseTime = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return {
+      connected: false,
+      error: errorMessage,
+      responseTime,
+    };
+  }
+}
+
+/**
+ * Get health status of Ollama server
+ */
+export async function getHealthStatus(url: string): Promise<{
+  connected: boolean;
+  version?: string;
+  models?: string[];
+  error?: string;
+  responseTime?: number;
+  lastChecked: number;
+}> {
+  const result = await testConnection(url);
+  return {
+    ...result,
+    lastChecked: Date.now(),
+  };
+}

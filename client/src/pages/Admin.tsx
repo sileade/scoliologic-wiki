@@ -69,6 +69,7 @@ import { cn } from "@/lib/utils";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import { AuthentikSyncPanel } from "@/components/AuthentikSyncPanel";
 import { PagePermissionsPanel } from "@/components/PagePermissionsPanel";
+import { OllamaSettingsPanel } from "@/components/OllamaSettingsPanel";
 import { useTranslation } from "react-i18next";
 import { useLocalizedError } from "@/hooks/useLocalizedError";
 
@@ -268,6 +269,10 @@ export default function Admin() {
             <TabsTrigger value="permissions">
               <Shield className="h-4 w-4 mr-2" />
               Права доступа
+            </TabsTrigger>
+            <TabsTrigger value="ollama">
+              <Activity className="h-4 w-4 mr-2" />
+              Ollama AI
             </TabsTrigger>
           </TabsList>
           
@@ -682,6 +687,11 @@ export default function Admin() {
 
           <TabsContent value="permissions">
             <PagePermissionsPanel />
+          </TabsContent>
+          
+          {/* Ollama Tab */}
+          <TabsContent value="ollama">
+            <OllamaSettingsPanel />
           </TabsContent>
         </Tabs>
       </main>

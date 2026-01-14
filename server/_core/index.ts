@@ -6,6 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerAuthentikOAuthRoutes } from "../authentikOAuth";
 import { startAuthentikSyncSchedule } from "../authentik";
+import { initMonitoring } from "../monitoring";
 import { ENV } from "./env";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -79,6 +80,11 @@ async function startServer() {
       startAuthentikSyncSchedule(syncIntervalMinutes);
       console.log(`[Authentik] Auto-sync enabled (every ${syncIntervalMinutes} minutes)`);
     }
+    
+    // Initialize monitoring system
+    initMonitoring().catch(err => {
+      console.error("[Monitoring] Failed to initialize:", err);
+    });
   });
 }
 

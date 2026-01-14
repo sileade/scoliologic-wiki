@@ -761,6 +761,57 @@ export async function saveAuthentikSettings(settings: AuthentikSettings): Promis
   }
 }
 
+// ============ OLLAMA SETTINGS ============
+
+export interface OllamaSettings {
+  enabled: boolean;
+  url: string;
+  embeddingModel: string;
+  chatModel: string;
+  healthCheckInterval: number;
+  notifyOnFailure: boolean;
+}
+
+export async function getOllamaSettings(): Promise<OllamaSettings | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const settings = await db.select().from(systemSettings)
+    .where(sql`${systemSettings.key} LIKE 'ollama_%'`);
+  
+  if (settings.length === 0) return null;
+  
+  const settingsMap = new Map(settings.map(s => [s.key, s.value]));
+  
+  return {
+    enabled: settingsMap.get('ollama_enabled') !== 'false',
+    url: settingsMap.get('ollama_url') || 'http://localhost:11434',
+    embeddingModel: settingsMap.get('ollama_embedding_model') || 'nomic-embed-text',
+    chatModel: settingsMap.get('ollama_chat_model') || 'llama3.2',
+    healthCheckInterval: parseInt(settingsMap.get('ollama_health_check_interval') || '60', 10),
+    notifyOnFailure: settingsMap.get('ollama_notify_on_failure') !== 'false',
+  };
+}
+
+export async function saveOllamaSettings(settings: OllamaSettings): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  const settingsToSave = [
+    { key: 'ollama_enabled', value: settings.enabled ? 'true' : 'false', description: 'Enable Ollama AI features' },
+    { key: 'ollama_url', value: settings.url, description: 'Ollama server URL' },
+    { key: 'ollama_embedding_model', value: settings.embeddingModel, description: 'Model for embeddings' },
+    { key: 'ollama_chat_model', value: settings.chatModel, description: 'Model for text generation' },
+    { key: 'ollama_health_check_interval', value: settings.healthCheckInterval.toString(), description: 'Health check interval in seconds' },
+    { key: 'ollama_notify_on_failure', value: settings.notifyOnFailure ? 'true' : 'false', description: 'Notify admin on Ollama failure' },
+  ];
+  
+  for (const setting of settingsToSave) {
+    await db.insert(systemSettings).values(setting)
+      .onDuplicateKeyUpdate({ set: { value: setting.value, description: setting.description } });
+  }
+}
+
 // ============ ACCESS REQUEST FUNCTIONS ============
 
 export async function createAccessRequest(data: InsertAccessRequest) {
