@@ -435,6 +435,55 @@ export async function getPagePermissions(pageId: number) {
     .where(eq(pagePermissions.pageId, pageId));
 }
 
+export async function getPagePermissionsWithDetails(pageId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const query = db.select({
+    id: pagePermissions.id,
+    pageId: pagePermissions.pageId,
+    groupId: pagePermissions.groupId,
+    userId: pagePermissions.userId,
+    permission: pagePermissions.permission,
+    pageTitle: pages.title,
+    groupName: groups.name,
+    userName: users.name,
+  })
+    .from(pagePermissions)
+    .leftJoin(pages, eq(pagePermissions.pageId, pages.id))
+    .leftJoin(groups, eq(pagePermissions.groupId, groups.id))
+    .leftJoin(users, eq(pagePermissions.userId, users.id));
+  
+  if (pageId !== undefined) {
+    return query.where(eq(pagePermissions.pageId, pageId));
+  }
+  
+  return query;
+}
+
+export async function addPagePermission(data: {
+  pageId: number | null;
+  groupId: number | null;
+  userId: number | null;
+  permission: "read" | "edit" | "admin";
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // pageId is required in schema, use 0 for global permissions
+  const insertData: InsertPagePermission = {
+    pageId: data.pageId ?? 0,
+    permission: data.permission,
+  };
+  
+  if (data.groupId !== null) insertData.groupId = data.groupId;
+  if (data.userId !== null) insertData.userId = data.userId;
+  
+  const result = await db.insert(pagePermissions).values(insertData);
+  
+  return result[0].insertId;
+}
+
 export async function checkUserPagePermission(
   userId: number,
   pageId: number
@@ -653,6 +702,63 @@ export async function getAllSettings() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(systemSettings);
+}
+
+// ============ AUTHENTIK SETTINGS FUNCTIONS ============
+
+interface AuthentikSettings {
+  enabled: boolean;
+  url: string;
+  clientId: string;
+  clientSecret: string;
+  apiToken: string;
+  syncInterval: number;
+}
+
+export async function getAuthentikSettings(): Promise<AuthentikSettings | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const settings = await db.select().from(systemSettings)
+    .where(sql`${systemSettings.key} LIKE 'authentik_%'`);
+  
+  if (settings.length === 0) return null;
+  
+  const settingsMap = new Map(settings.map(s => [s.key, s.value]));
+  
+  return {
+    enabled: settingsMap.get('authentik_enabled') === 'true',
+    url: settingsMap.get('authentik_url') || '',
+    clientId: settingsMap.get('authentik_client_id') || '',
+    clientSecret: settingsMap.get('authentik_client_secret') || '',
+    apiToken: settingsMap.get('authentik_api_token') || '',
+    syncInterval: parseInt(settingsMap.get('authentik_sync_interval') || '60', 10),
+  };
+}
+
+export async function saveAuthentikSettings(settings: AuthentikSettings): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  const settingsToSave = [
+    { key: 'authentik_enabled', value: settings.enabled ? 'true' : 'false', description: 'Enable Authentik integration' },
+    { key: 'authentik_url', value: settings.url, description: 'Authentik server URL' },
+    { key: 'authentik_client_id', value: settings.clientId, description: 'OAuth2 Client ID' },
+    { key: 'authentik_sync_interval', value: settings.syncInterval.toString(), description: 'Sync interval in minutes' },
+  ];
+  
+  // Only update secrets if they are not masked
+  if (settings.clientSecret && !settings.clientSecret.includes('•')) {
+    settingsToSave.push({ key: 'authentik_client_secret', value: settings.clientSecret, description: 'OAuth2 Client Secret' });
+  }
+  if (settings.apiToken && !settings.apiToken.includes('•')) {
+    settingsToSave.push({ key: 'authentik_api_token', value: settings.apiToken, description: 'API Token for sync' });
+  }
+  
+  for (const setting of settingsToSave) {
+    await db.insert(systemSettings).values(setting)
+      .onDuplicateKeyUpdate({ set: { value: setting.value, description: setting.description } });
+  }
 }
 
 // ============ ACCESS REQUEST FUNCTIONS ============

@@ -1003,6 +1003,95 @@ export const appRouter = router({
       }
       return authentik.fullSyncFromAuthentik();
     }),
+
+    getAuthentikSettings: adminProcedure.query(async () => {
+      const settings = await db.getAuthentikSettings();
+      return {
+        enabled: settings?.enabled ?? false,
+        url: settings?.url ?? "",
+        clientId: settings?.clientId ?? "",
+        clientSecret: settings?.clientSecret ? "••••••••" : "",
+        apiToken: settings?.apiToken ? "••••••••" : "",
+        syncInterval: settings?.syncInterval ?? 60,
+      };
+    }),
+
+    saveAuthentikSettings: adminProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        url: z.string(),
+        clientId: z.string(),
+        clientSecret: z.string(),
+        apiToken: z.string(),
+        syncInterval: z.number().min(5).max(1440),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.saveAuthentikSettings(input);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_authentik_settings",
+          entityType: "settings",
+          details: { enabled: input.enabled, url: input.url },
+        });
+        return { success: true };
+      }),
+
+    testAuthentikConnection: adminProcedure
+      .input(z.object({
+        url: z.string(),
+        apiToken: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        return authentik.testConnection(input.url, input.apiToken);
+      }),
+
+    // Page permissions management
+    getPagePermissions: adminProcedure
+      .input(z.object({
+        pageId: z.number().optional(),
+      }))
+      .query(async ({ input }) => {
+        return db.getPagePermissionsWithDetails(input.pageId);
+      }),
+
+    addPagePermission: adminProcedure
+      .input(z.object({
+        pageId: z.number().optional(),
+        groupId: z.number().optional(),
+        userId: z.number().optional(),
+        permission: z.enum(["read", "edit", "admin"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await db.addPagePermission({
+          pageId: input.pageId ?? null,
+          groupId: input.groupId ?? null,
+          userId: input.userId ?? null,
+          permission: input.permission,
+        });
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "add_page_permission",
+          entityType: "permission",
+          entityId: id,
+          details: { pageId: input.pageId, groupId: input.groupId, userId: input.userId, permission: input.permission },
+        });
+        return { id };
+      }),
+
+    removePagePermission: adminProcedure
+      .input(z.object({
+        id: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.removePagePermission(input.id);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "remove_page_permission",
+          entityType: "permission",
+          entityId: input.id,
+        });
+        return { success: true };
+      }),
   }),
 
   // ============ ACCESS REQUESTS ============

@@ -373,6 +373,26 @@ export async function checkAuthentikConnection(): Promise<{
 /**
  * Schedule periodic sync of users and groups from Authentik
  */
+export async function testConnection(url: string, apiToken: string): Promise<{ connected: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${url}/api/v3/core/users/?page_size=1`, {
+      headers: {
+        "Authorization": `Bearer ${apiToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    
+    if (response.ok) {
+      return { connected: true };
+    } else {
+      const errorText = await response.text();
+      return { connected: false, error: `HTTP ${response.status}: ${errorText}` };
+    }
+  } catch (error) {
+    return { connected: false, error: error instanceof Error ? error.message : "Unknown error" };
+  }
+}
+
 export function startAuthentikSyncSchedule(intervalMinutes: number = 60): NodeJS.Timeout {
   console.log(`[Authentik] Starting sync schedule every ${intervalMinutes} minutes`);
 
