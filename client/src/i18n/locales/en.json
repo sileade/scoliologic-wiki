@@ -370,7 +370,9 @@
     "NO_ACCESSIBLE_PAGES": "No accessible pages found",
     "NO_PAGES_SPECIFIED": "No pages specified",
     "MAX_PAGES_EXCEEDED": "Maximum pages limit exceeded (max 50)",
-    "FAILED_TO_ADD_FAVORITE": "Failed to add to favorites"
+    "FAILED_TO_ADD_FAVORITE": "Failed to add to favorites",
+    "unexpectedError": "An unexpected error occurred.",
+    "reloadPage": "Reload Page"
   },
   "home": {
     "heroTitle": "Corporate Knowledge Base",

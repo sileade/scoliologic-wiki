@@ -370,7 +370,9 @@
     "NO_ACCESSIBLE_PAGES": "Нет доступных страниц",
     "NO_PAGES_SPECIFIED": "Страницы не указаны",
     "MAX_PAGES_EXCEEDED": "Превышен лимит страниц (максимум 50)",
-    "FAILED_TO_ADD_FAVORITE": "Не удалось добавить в избранное"
+    "FAILED_TO_ADD_FAVORITE": "Не удалось добавить в избранное",
+    "unexpectedError": "Произошла непредвиденная ошибка.",
+    "reloadPage": "Перезагрузить страницу"
   },
   "home": {
     "heroTitle": "Корпоративная база знаний",
