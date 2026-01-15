@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { RefreshCw, TrendingUp, AlertTriangle, Activity, Clock, Globe, Server, CheckCircle, XCircle } from "lucide-react";
+import { TraefikTrendsDashboard } from "./TraefikTrendsDashboard";
 import Chart from "chart.js/auto";
 
 export function MetricsDashboard() {
@@ -398,6 +399,9 @@ export function MetricsDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Traefik Historical Trends */}
+      <TraefikTrendsDashboard />
 
       {/* Error Details */}
       {errorStats && Object.keys(errorStats.bySource).length > 0 && (
