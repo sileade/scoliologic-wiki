@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
-import { RefreshCw, TrendingUp, AlertTriangle, Activity, Clock } from "lucide-react";
+import { RefreshCw, TrendingUp, AlertTriangle, Activity, Clock, Globe, Server, CheckCircle, XCircle } from "lucide-react";
 import Chart from "chart.js/auto";
 
 export function MetricsDashboard() {
@@ -18,6 +18,8 @@ export function MetricsDashboard() {
   const { data: dashboardMetrics, isLoading, refetch } = trpc.admin.getDashboardMetrics.useQuery();
   const { data: monitoringStatus } = trpc.admin.getMonitoringStatus.useQuery();
   const { data: errorStats } = trpc.admin.getErrorStats.useQuery();
+  const { data: traefikMetrics } = trpc.admin.getTraefikMetrics.useQuery();
+  const { data: traefikHealth } = trpc.admin.getTraefikHealth.useQuery();
 
   // Response Time Chart
   useEffect(() => {
@@ -301,6 +303,99 @@ export function MetricsDashboard() {
           <div className="h-[300px]">
             <canvas ref={requestCountChartRef} />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Traefik Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            Статус Traefik
+          </CardTitle>
+          <CardDescription>Мониторинг балансировщика нагрузки</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
+              <div className={`p-2 rounded-full ${traefikHealth?.healthy ? 'bg-green-100' : 'bg-red-100'}`}>
+                {traefikHealth?.healthy ? (
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-600" />
+                )}
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Статус</p>
+                <p className="font-semibold">
+                  {traefikHealth?.healthy ? 'Активен' : 'Недоступен'}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
+              <div className="p-2 rounded-full bg-blue-100">
+                <Globe className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Роутеры</p>
+                <p className="font-semibold">
+                  {traefikMetrics?.stats?.activeRouters ?? 0} / {traefikMetrics?.stats?.totalRouters ?? 0}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
+              <div className="p-2 rounded-full bg-purple-100">
+                <Server className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Сервисы</p>
+                <p className="font-semibold">
+                  {traefikMetrics?.stats?.activeServices ?? 0} / {traefikMetrics?.stats?.totalServices ?? 0}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
+              <div className="p-2 rounded-full bg-gray-100">
+                <Activity className="h-5 w-5 text-gray-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Версия</p>
+                <p className="font-semibold">
+                  {traefikHealth?.version || '—'}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Service Health */}
+          {traefikMetrics?.serviceHealth && Object.keys(traefikMetrics.serviceHealth).length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-sm font-medium mb-2">Здоровье сервисов</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {Object.entries(traefikMetrics.serviceHealth).slice(0, 8).map(([name, status]) => (
+                  <div key={name} className="flex items-center gap-2 p-2 bg-muted/50 rounded text-sm">
+                    <div className={`w-2 h-2 rounded-full ${
+                      status === 'healthy' ? 'bg-green-500' : 
+                      status === 'degraded' ? 'bg-yellow-500' : 'bg-red-500'
+                    }`} />
+                    <span className="truncate" title={name}>{name.split('@')[0]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {traefikHealth?.error && (
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-sm text-red-700 dark:text-red-300">
+                <AlertTriangle className="h-4 w-4 inline mr-2" />
+                {traefikHealth.error}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

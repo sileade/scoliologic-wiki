@@ -14,6 +14,7 @@ import * as authentik from "./authentik";
 import { ENV } from "./_core/env";
 import { generatePDF, generateMultiPagePDF } from "./pdf";
 import { generateMarkdownFile, generateMarkdownBundle, markdownToTipTap } from "./markdown";
+import * as traefik from "./traefik";
 
 // Admin procedure middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -1312,6 +1313,133 @@ export const appRouter = router({
         }
       }),
 
+    // Get Traefik routers and services with full details
+    getTraefikRouters: adminProcedure.query(async () => {
+      const settings = await db.getTraefikSettings();
+      if (!settings?.enabled || !settings?.apiUrl) {
+        return { routers: [], services: [], error: 'Traefik not configured' };
+      }
+      
+      try {
+        const headers: Record<string, string> = {};
+        if (settings.apiUser && settings.apiPassword) {
+          const auth = Buffer.from(`${settings.apiUser}:${settings.apiPassword}`).toString('base64');
+          headers['Authorization'] = `Basic ${auth}`;
+        }
+        
+        const [routersRes, servicesRes, middlewaresRes] = await Promise.all([
+          fetch(`${settings.apiUrl}/api/http/routers`, { headers }),
+          fetch(`${settings.apiUrl}/api/http/services`, { headers }),
+          fetch(`${settings.apiUrl}/api/http/middlewares`, { headers }),
+        ]);
+        
+        const routers = routersRes.ok ? await routersRes.json() : [];
+        const services = servicesRes.ok ? await servicesRes.json() : [];
+        const middlewares = middlewaresRes.ok ? await middlewaresRes.json() : [];
+        
+        return { routers, services, middlewares };
+      } catch (error) {
+        return { routers: [], services: [], middlewares: [], error: error instanceof Error ? error.message : 'Connection failed' };
+      }
+    }),
+
+    // Get Traefik metrics for dashboard
+    getTraefikMetrics: adminProcedure.query(async () => {
+      const settings = await db.getTraefikSettings();
+      if (!settings?.enabled || !settings?.apiUrl) {
+        return { success: false, error: 'Traefik not configured' };
+      }
+      
+      try {
+        const headers: Record<string, string> = {};
+        if (settings.apiUser && settings.apiPassword) {
+          const auth = Buffer.from(`${settings.apiUser}:${settings.apiPassword}`).toString('base64');
+          headers['Authorization'] = `Basic ${auth}`;
+        }
+        
+        // Get overview stats
+        const [routersRes, servicesRes, entrypointsRes] = await Promise.all([
+          fetch(`${settings.apiUrl}/api/http/routers`, { headers }),
+          fetch(`${settings.apiUrl}/api/http/services`, { headers }),
+          fetch(`${settings.apiUrl}/api/entrypoints`, { headers }),
+        ]);
+        
+        const routers = routersRes.ok ? await routersRes.json() : [];
+        const services = servicesRes.ok ? await servicesRes.json() : [];
+        const entrypoints = entrypointsRes.ok ? await entrypointsRes.json() : [];
+        
+        // Calculate stats
+        const activeRouters = Array.isArray(routers) ? routers.filter((r: any) => r.status === 'enabled').length : 0;
+        const totalRouters = Array.isArray(routers) ? routers.length : 0;
+        const activeServices = Array.isArray(services) ? services.filter((s: any) => s.status === 'enabled').length : 0;
+        const totalServices = Array.isArray(services) ? services.length : 0;
+        
+        // Get service health
+        const serviceHealth: Record<string, string> = {};
+        if (Array.isArray(services)) {
+          for (const service of services) {
+            if (service.serverStatus) {
+              const statuses = Object.values(service.serverStatus) as string[];
+              const allUp = statuses.every((s: string) => s === 'UP');
+              const allDown = statuses.every((s: string) => s === 'DOWN');
+              serviceHealth[service.name] = allUp ? 'healthy' : allDown ? 'unhealthy' : 'degraded';
+            }
+          }
+        }
+        
+        return {
+          success: true,
+          stats: {
+            activeRouters,
+            totalRouters,
+            activeServices,
+            totalServices,
+            entrypointsCount: Array.isArray(entrypoints) ? entrypoints.length : 0,
+          },
+          serviceHealth,
+          timestamp: new Date().toISOString(),
+        };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Connection failed' };
+      }
+    }),
+
+    // Generate Traefik router config for a page
+    generateTraefikRouterConfig: adminProcedure
+      .input(z.object({
+        pageId: z.number(),
+        domain: z.string(),
+        entryPoint: z.string().optional(),
+        certResolver: z.string().optional(),
+        serviceUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const page = await db.getPageById(input.pageId);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+        
+        const config = traefik.generateRouterConfig(page.slug, {
+          domain: input.domain,
+          entryPoint: input.entryPoint,
+          certResolver: input.certResolver,
+          serviceUrl: input.serviceUrl,
+        });
+        
+        return {
+          success: true,
+          routerName: `wiki-${page.slug}`,
+          serviceName: `wiki-${page.slug}-service`,
+          config,
+          yamlConfig: generateTraefikYaml(config),
+        };
+      }),
+
+    // Get Traefik health status
+    getTraefikHealth: adminProcedure.query(async () => {
+      return traefik.checkHealth();
+    }),
+
     // MinIO S3 settings
     getMinioSettings: adminProcedure.query(async () => {
       const settings = await db.getMinioSettings();
@@ -2058,6 +2186,46 @@ export const appRouter = router({
 export type AppRouter = typeof appRouter;
 
 // Helper functions
+
+// Generate Traefik YAML configuration
+function generateTraefikYaml(config: { router: Record<string, any>; service: Record<string, any> }): string {
+  const yaml: string[] = ['http:'];
+  
+  // Routers section
+  yaml.push('  routers:');
+  for (const [name, routerConfig] of Object.entries(config.router)) {
+    yaml.push(`    ${name}:`);
+    yaml.push(`      rule: "${routerConfig.rule}"`);
+    yaml.push(`      entryPoints:`);
+    for (const ep of routerConfig.entryPoints) {
+      yaml.push(`        - ${ep}`);
+    }
+    yaml.push(`      service: ${routerConfig.service}`);
+    if (routerConfig.tls) {
+      yaml.push(`      tls:`);
+      if (routerConfig.tls.certResolver) {
+        yaml.push(`        certResolver: ${routerConfig.tls.certResolver}`);
+      }
+    }
+  }
+  
+  // Services section
+  yaml.push('  services:');
+  for (const [name, serviceConfig] of Object.entries(config.service)) {
+    yaml.push(`    ${name}:`);
+    yaml.push(`      loadBalancer:`);
+    yaml.push(`        servers:`);
+    for (const server of serviceConfig.loadBalancer.servers) {
+      yaml.push(`          - url: "${server.url}"`);
+    }
+    if (serviceConfig.loadBalancer.passHostHeader !== undefined) {
+      yaml.push(`        passHostHeader: ${serviceConfig.loadBalancer.passHostHeader}`);
+    }
+  }
+  
+  return yaml.join('\n');
+}
+
 function splitIntoChunks(text: string, maxLength: number): string[] {
   const chunks: string[] = [];
   const paragraphs = text.split(/\n\n+/);

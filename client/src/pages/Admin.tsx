@@ -72,6 +72,7 @@ import { PagePermissionsPanel } from "@/components/PagePermissionsPanel";
 import { OllamaSettingsPanel } from "@/components/OllamaSettingsPanel";
 import { MetricsDashboard } from "@/components/MetricsDashboard";
 import { TraefikSettingsPanel } from "@/components/TraefikSettingsPanel";
+import { TraefikRoutersPanel } from "@/components/TraefikRoutersPanel";
 import { MinioSettingsPanel } from "@/components/MinioSettingsPanel";
 import { useTranslation } from "react-i18next";
 import { useLocalizedError } from "@/hooks/useLocalizedError";
@@ -282,6 +283,10 @@ export default function Admin() {
             <TabsTrigger value="traefik">
               <Activity className="h-4 w-4 mr-2" />
               Traefik
+            </TabsTrigger>
+            <TabsTrigger value="traefik-routers">
+              <Activity className="h-4 w-4 mr-2" />
+              Роутеры
             </TabsTrigger>
             <TabsTrigger value="minio">
               <Activity className="h-4 w-4 mr-2" />
@@ -716,6 +721,10 @@ export default function Admin() {
 
           <TabsContent value="traefik" className="mt-0">
             <TraefikSettingsPanel />
+          </TabsContent>
+
+          <TabsContent value="traefik-routers" className="mt-0">
+            <TraefikRoutersPanel />
           </TabsContent>
 
           <TabsContent value="minio" className="mt-0">
