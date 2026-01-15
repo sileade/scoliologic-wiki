@@ -272,7 +272,18 @@
     "memberAdded": "Member added successfully",
     "memberRemoved": "Member removed successfully",
     "roleUpdated": "Role updated successfully",
-    "requestHandled": "Request handled successfully"
+    "requestHandled": "Request handled successfully",
+    "authentik": "Authentik",
+    "accessControl": "Access Control",
+    "ollamaAI": "Ollama AI",
+    "traefik": "Traefik",
+    "routers": "Routers",
+    "traffic": "Traffic",
+    "alerts": "Alerts",
+    "configs": "Configs",
+    "minioS3": "MinIO S3",
+    "telegramSlack": "Telegram/Slack",
+    "metrics": "Metrics"
   },
   "notifications": {
     "title": "Notifications",

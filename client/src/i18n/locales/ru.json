@@ -272,7 +272,18 @@
     "memberAdded": "Участник добавлен",
     "memberRemoved": "Участник удалён",
     "roleUpdated": "Роль обновлена",
-    "requestHandled": "Запрос обработан"
+    "requestHandled": "Запрос обработан",
+    "authentik": "Authentik",
+    "accessControl": "Права доступа",
+    "ollamaAI": "Ollama AI",
+    "traefik": "Traefik",
+    "routers": "Роутеры",
+    "traffic": "Трафик",
+    "alerts": "Алерты",
+    "configs": "Конфиги",
+    "minioS3": "MinIO S3",
+    "telegramSlack": "Telegram/Slack",
+    "metrics": "Метрики"
   },
   "notifications": {
     "title": "Уведомления",

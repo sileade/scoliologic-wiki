@@ -274,47 +274,47 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="authentik">
               <Link2 className="h-4 w-4 mr-2" />
-              Authentik
+              {t("admin.authentik")}
             </TabsTrigger>
             <TabsTrigger value="permissions">
               <Shield className="h-4 w-4 mr-2" />
-              Права доступа
+              {t("admin.accessControl")}
             </TabsTrigger>
             <TabsTrigger value="ollama">
               <Activity className="h-4 w-4 mr-2" />
-              Ollama AI
+              {t("admin.ollamaAI")}
             </TabsTrigger>
             <TabsTrigger value="traefik">
               <Activity className="h-4 w-4 mr-2" />
-              Traefik
+              {t("admin.traefik")}
             </TabsTrigger>
             <TabsTrigger value="traefik-routers">
               <Activity className="h-4 w-4 mr-2" />
-              Роутеры
+              {t("admin.routers")}
             </TabsTrigger>
             <TabsTrigger value="traefik-traffic">
               <Activity className="h-4 w-4 mr-2" />
-              Трафик
+              {t("admin.traffic")}
             </TabsTrigger>
             <TabsTrigger value="traefik-alerts">
               <Activity className="h-4 w-4 mr-2" />
-              Алерты
+              {t("admin.alerts")}
             </TabsTrigger>
             <TabsTrigger value="traefik-config">
               <Activity className="h-4 w-4 mr-2" />
-              Конфиги
+              {t("admin.configs")}
             </TabsTrigger>
             <TabsTrigger value="minio">
               <Activity className="h-4 w-4 mr-2" />
-              MinIO S3
+              {t("admin.minioS3")}
             </TabsTrigger>
             <TabsTrigger value="notifications-integrations">
               <Activity className="h-4 w-4 mr-2" />
-              Telegram/Slack
+              {t("admin.telegramSlack")}
             </TabsTrigger>
             <TabsTrigger value="metrics">
               <Activity className="h-4 w-4 mr-2" />
-              Метрики
+              {t("admin.metrics")}
             </TabsTrigger>
               </TabsList>
             </div>
