@@ -1521,11 +1521,18 @@ export async function saveAIAgentSettings(settings: AIAgentSettings): Promise<vo
 
 export interface TraefikSettings {
   enabled: boolean;
+  connectionType?: string;
   apiUrl: string;
+  remoteHost?: string;
+  remotePort?: string;
+  useSSL?: boolean;
+  authType?: string;
   apiUser: string;
   apiPassword: string;
   entryPoint: string;
   dashboardUrl: string;
+  timeout?: number;
+  retryCount?: number;
 }
 
 export async function getTraefikSettings(): Promise<TraefikSettings | null> {
@@ -1544,11 +1551,18 @@ export async function getTraefikSettings(): Promise<TraefikSettings | null> {
   
   return {
     enabled: settingsMap['traefik_enabled'] === 'true',
+    connectionType: settingsMap['traefik_connection_type'] || 'local',
     apiUrl: settingsMap['traefik_api_url'] || '',
+    remoteHost: settingsMap['traefik_remote_host'] || '',
+    remotePort: settingsMap['traefik_remote_port'] || '8080',
+    useSSL: settingsMap['traefik_use_ssl'] === 'true',
+    authType: settingsMap['traefik_auth_type'] || 'none',
     apiUser: settingsMap['traefik_api_user'] || '',
     apiPassword: settingsMap['traefik_api_password'] || '',
     entryPoint: settingsMap['traefik_entry_point'] || 'websecure',
     dashboardUrl: settingsMap['traefik_dashboard_url'] || '',
+    timeout: parseInt(settingsMap['traefik_timeout'] || '10', 10),
+    retryCount: parseInt(settingsMap['traefik_retry_count'] || '3', 10),
   };
 }
 
@@ -1558,11 +1572,18 @@ export async function saveTraefikSettings(settings: TraefikSettings): Promise<vo
   
   const settingsToSave = [
     { key: 'traefik_enabled', value: settings.enabled ? 'true' : 'false', description: 'Enable Traefik integration' },
+    { key: 'traefik_connection_type', value: settings.connectionType || 'local', description: 'Connection type (local/remote)' },
     { key: 'traefik_api_url', value: settings.apiUrl, description: 'Traefik API URL' },
+    { key: 'traefik_remote_host', value: settings.remoteHost || '', description: 'Remote Traefik host' },
+    { key: 'traefik_remote_port', value: settings.remotePort || '8080', description: 'Remote Traefik port' },
+    { key: 'traefik_use_ssl', value: settings.useSSL ? 'true' : 'false', description: 'Use SSL for connection' },
+    { key: 'traefik_auth_type', value: settings.authType || 'none', description: 'Auth type (none/basic/digest)' },
     { key: 'traefik_api_user', value: settings.apiUser, description: 'Traefik API username' },
     { key: 'traefik_api_password', value: settings.apiPassword, description: 'Traefik API password' },
     { key: 'traefik_entry_point', value: settings.entryPoint, description: 'Traefik entry point' },
     { key: 'traefik_dashboard_url', value: settings.dashboardUrl, description: 'Traefik dashboard URL' },
+    { key: 'traefik_timeout', value: String(settings.timeout || 10), description: 'Connection timeout' },
+    { key: 'traefik_retry_count', value: String(settings.retryCount || 3), description: 'Retry count' },
   ];
   
   for (const setting of settingsToSave) {

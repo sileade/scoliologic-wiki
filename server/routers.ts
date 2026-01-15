@@ -1201,22 +1201,36 @@ export const appRouter = router({
       const settings = await db.getTraefikSettings();
       return {
         enabled: settings?.enabled ?? false,
+        connectionType: settings?.connectionType ?? "local",
         apiUrl: settings?.apiUrl ?? "",
+        remoteHost: settings?.remoteHost ?? "",
+        remotePort: settings?.remotePort ?? "8080",
+        useSSL: settings?.useSSL ?? false,
+        authType: settings?.authType ?? "none",
         apiUser: settings?.apiUser ?? "",
         apiPassword: settings?.apiPassword ? "••••••••" : "",
         entryPoint: settings?.entryPoint ?? "websecure",
         dashboardUrl: settings?.dashboardUrl ?? "",
+        timeout: settings?.timeout ?? 10,
+        retryCount: settings?.retryCount ?? 3,
       };
     }),
 
     saveTraefikSettings: adminProcedure
       .input(z.object({
         enabled: z.boolean(),
+        connectionType: z.enum(["local", "remote"]).optional(),
         apiUrl: z.string(),
+        remoteHost: z.string().optional(),
+        remotePort: z.string().optional(),
+        useSSL: z.boolean().optional(),
+        authType: z.enum(["none", "basic", "digest"]).optional(),
         apiUser: z.string(),
         apiPassword: z.string(),
         entryPoint: z.string(),
         dashboardUrl: z.string(),
+        timeout: z.number().optional(),
+        retryCount: z.number().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         await db.saveTraefikSettings(input);
@@ -1224,7 +1238,7 @@ export const appRouter = router({
           userId: ctx.user.id,
           action: "update_traefik_settings",
           entityType: "settings",
-          details: { enabled: input.enabled, apiUrl: input.apiUrl },
+          details: { enabled: input.enabled, apiUrl: input.apiUrl, connectionType: input.connectionType },
         });
         return { success: true };
       }),
@@ -1237,17 +1251,64 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         try {
-          const auth = Buffer.from(`${input.apiUser}:${input.apiPassword}`).toString('base64');
-          const response = await fetch(`${input.apiUrl}/api/version`, {
-            headers: { 'Authorization': `Basic ${auth}` },
-          });
-          if (response.ok) {
-            const data = await response.json();
-            return { success: true, version: data.Version || 'unknown' };
+          const headers: Record<string, string> = {};
+          if (input.apiUser && input.apiPassword) {
+            const auth = Buffer.from(`${input.apiUser}:${input.apiPassword}`).toString('base64');
+            headers['Authorization'] = `Basic ${auth}`;
           }
-          return { success: false, error: `HTTP ${response.status}` };
+          
+          // Get version
+          const versionResponse = await fetch(`${input.apiUrl}/api/version`, { headers });
+          let version = 'unknown';
+          if (versionResponse.ok) {
+            const versionData = await versionResponse.json();
+            version = versionData.Version || 'unknown';
+          }
+          
+          // Get routers count
+          let routers = 0;
+          try {
+            const routersResponse = await fetch(`${input.apiUrl}/api/http/routers`, { headers });
+            if (routersResponse.ok) {
+              const routersData = await routersResponse.json();
+              routers = Array.isArray(routersData) ? routersData.length : 0;
+            }
+          } catch {}
+          
+          // Get services count
+          let services = 0;
+          try {
+            const servicesResponse = await fetch(`${input.apiUrl}/api/http/services`, { headers });
+            if (servicesResponse.ok) {
+              const servicesData = await servicesResponse.json();
+              services = Array.isArray(servicesData) ? servicesData.length : 0;
+            }
+          } catch {}
+          
+          if (versionResponse.ok) {
+            return { success: true, version, routers, services };
+          }
+          return { success: false, error: `HTTP ${versionResponse.status}` };
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Connection failed' };
+        }
+      }),
+
+    getTraefikInfo: adminProcedure
+      .input(z.object({ apiUrl: z.string() }))
+      .mutation(async ({ input }) => {
+        try {
+          const [routersRes, servicesRes] = await Promise.all([
+            fetch(`${input.apiUrl}/api/http/routers`),
+            fetch(`${input.apiUrl}/api/http/services`),
+          ]);
+          
+          const routers = routersRes.ok ? await routersRes.json() : [];
+          const services = servicesRes.ok ? await servicesRes.json() : [];
+          
+          return { routers, services };
+        } catch (error) {
+          return { routers: [], services: [] };
         }
       }),
 
