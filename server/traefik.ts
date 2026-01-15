@@ -749,3 +749,665 @@ export function generateTomlConfig(pageSlug: string, options: {
   
   return toml.join('\n');
 }
+
+
+// ============ HISTORICAL METRICS ============
+
+/**
+ * Save current metrics to database for historical tracking
+ */
+export async function collectAndSaveMetrics(): Promise<{ saved: number; error?: string }> {
+  const stats = await getServiceTrafficStats();
+  if (!stats?.services || stats.services.length === 0) {
+    return { saved: 0, error: 'No metrics available' };
+  }
+  
+  const dbInstance = await db.getDb();
+  if (!dbInstance) {
+    return { saved: 0, error: 'Database not available' };
+  }
+  
+  const { traefikMetrics } = await import('../drizzle/schema');
+  
+  let saved = 0;
+  for (const service of stats.services) {
+    try {
+      await dbInstance.insert(traefikMetrics).values({
+        serviceName: service.name,
+        requestsTotal: service.requestsTotal,
+        requestsPerSecond: String(service.requestsPerSecond),
+        avgLatencyMs: service.avgLatencyMs,
+        errors4xx: service.errors4xx,
+        errors5xx: service.errors5xx,
+        openConnections: 0,
+      });
+      saved++;
+    } catch (error) {
+      console.error('[Traefik] Failed to save metrics for service:', service.name, error);
+    }
+  }
+  
+  return { saved };
+}
+
+/**
+ * Get historical metrics for a service
+ */
+export async function getHistoricalMetrics(options: {
+  serviceName?: string;
+  startTime?: Date;
+  endTime?: Date;
+  limit?: number;
+}): Promise<any[]> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) return [];
+  
+  const { traefikMetrics } = await import('../drizzle/schema');
+  const { desc, and, gte, lte, eq } = await import('drizzle-orm');
+  
+  const conditions = [];
+  
+  if (options.serviceName) {
+    conditions.push(eq(traefikMetrics.serviceName, options.serviceName));
+  }
+  
+  if (options.startTime) {
+    conditions.push(gte(traefikMetrics.collectedAt, options.startTime));
+  }
+  
+  if (options.endTime) {
+    conditions.push(lte(traefikMetrics.collectedAt, options.endTime));
+  }
+  
+  const query = dbInstance.select().from(traefikMetrics);
+  
+  if (conditions.length > 0) {
+    return query
+      .where(and(...conditions))
+      .orderBy(desc(traefikMetrics.collectedAt))
+      .limit(options.limit || 100);
+  }
+  
+  return query
+    .orderBy(desc(traefikMetrics.collectedAt))
+    .limit(options.limit || 100);
+}
+
+/**
+ * Get aggregated metrics for trend analysis
+ */
+export async function getMetricsTrends(options: {
+  serviceName?: string;
+  period: 'hour' | 'day' | 'week';
+}): Promise<{
+  labels: string[];
+  requestsTotal: number[];
+  avgLatency: number[];
+  errors4xx: number[];
+  errors5xx: number[];
+}> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) {
+    return { labels: [], requestsTotal: [], avgLatency: [], errors4xx: [], errors5xx: [] };
+  }
+  
+  const { traefikMetrics } = await import('../drizzle/schema');
+  const { desc, and, gte, eq } = await import('drizzle-orm');
+  
+  // Calculate start time based on period
+  const now = new Date();
+  let startTime: Date;
+  let groupFormat: string;
+  
+  switch (options.period) {
+    case 'hour':
+      startTime = new Date(now.getTime() - 60 * 60 * 1000);
+      groupFormat = 'HH:mm';
+      break;
+    case 'day':
+      startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      groupFormat = 'HH:00';
+      break;
+    case 'week':
+      startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      groupFormat = 'ddd';
+      break;
+  }
+  
+  const conditions = [gte(traefikMetrics.collectedAt, startTime)];
+  
+  if (options.serviceName) {
+    conditions.push(eq(traefikMetrics.serviceName, options.serviceName));
+  }
+  
+  const metrics = await dbInstance.select()
+    .from(traefikMetrics)
+    .where(and(...conditions))
+    .orderBy(desc(traefikMetrics.collectedAt));
+  
+  // Group metrics by time buckets
+  const buckets = new Map<string, {
+    requestsTotal: number;
+    avgLatency: number;
+    errors4xx: number;
+    errors5xx: number;
+    count: number;
+  }>();
+  
+  for (const metric of metrics) {
+    const date = new Date(metric.collectedAt);
+    let key: string;
+    
+    switch (options.period) {
+      case 'hour':
+        key = `${date.getHours().toString().padStart(2, '0')}:${Math.floor(date.getMinutes() / 5) * 5}`;
+        break;
+      case 'day':
+        key = `${date.getHours().toString().padStart(2, '0')}:00`;
+        break;
+      case 'week':
+        key = date.toLocaleDateString('en-US', { weekday: 'short' });
+        break;
+    }
+    
+    if (!buckets.has(key)) {
+      buckets.set(key, { requestsTotal: 0, avgLatency: 0, errors4xx: 0, errors5xx: 0, count: 0 });
+    }
+    
+    const bucket = buckets.get(key)!;
+    bucket.requestsTotal += metric.requestsTotal;
+    bucket.avgLatency += metric.avgLatencyMs;
+    bucket.errors4xx += metric.errors4xx;
+    bucket.errors5xx += metric.errors5xx;
+    bucket.count++;
+  }
+  
+  const labels: string[] = [];
+  const requestsTotal: number[] = [];
+  const avgLatency: number[] = [];
+  const errors4xx: number[] = [];
+  const errors5xx: number[] = [];
+  
+  for (const [label, data] of Array.from(buckets.entries())) {
+    labels.push(label);
+    requestsTotal.push(data.requestsTotal);
+    avgLatency.push(data.count > 0 ? Math.round(data.avgLatency / data.count) : 0);
+    errors4xx.push(data.errors4xx);
+    errors5xx.push(data.errors5xx);
+  }
+  
+  return { labels, requestsTotal, avgLatency, errors4xx, errors5xx };
+}
+
+/**
+ * Clean up old metrics (retention policy)
+ */
+export async function cleanupOldMetrics(retentionDays: number = 30): Promise<number> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) return 0;
+  
+  const { traefikMetrics } = await import('../drizzle/schema');
+  const { lt } = await import('drizzle-orm');
+  
+  const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+  
+  const result = await dbInstance.delete(traefikMetrics)
+    .where(lt(traefikMetrics.collectedAt, cutoffDate));
+  
+  return (result as any)[0]?.affectedRows || 0;
+}
+
+// ============ ALERT MANAGEMENT ============
+
+interface AlertThreshold {
+  id: number;
+  name: string;
+  serviceName: string | null;
+  metricType: string;
+  operator: string;
+  threshold: string;
+  windowMinutes: number;
+  isEnabled: boolean;
+  notifyEmail: boolean;
+  notifyWebhook: boolean;
+  webhookUrl: string | null;
+  cooldownMinutes: number;
+  lastTriggeredAt: Date | null;
+}
+
+/**
+ * Get all alert thresholds
+ */
+export async function getAlertThresholds(): Promise<AlertThreshold[]> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) return [];
+  
+  const { traefikAlertThresholds } = await import('../drizzle/schema');
+  
+  return dbInstance.select().from(traefikAlertThresholds);
+}
+
+/**
+ * Create a new alert threshold
+ */
+export async function createAlertThreshold(threshold: {
+  name: string;
+  serviceName?: string;
+  metricType: 'errors_4xx_rate' | 'errors_5xx_rate' | 'latency_avg' | 'latency_p95' | 'requests_per_second' | 'error_total_rate';
+  operator: 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
+  threshold: number;
+  windowMinutes?: number;
+  notifyEmail?: boolean;
+  notifyWebhook?: boolean;
+  webhookUrl?: string;
+  cooldownMinutes?: number;
+  createdById?: number;
+}): Promise<number> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) throw new Error('Database not available');
+  
+  const { traefikAlertThresholds } = await import('../drizzle/schema');
+  
+  const result = await dbInstance.insert(traefikAlertThresholds).values({
+    name: threshold.name,
+    serviceName: threshold.serviceName || null,
+    metricType: threshold.metricType,
+    operator: threshold.operator,
+    threshold: String(threshold.threshold),
+    windowMinutes: threshold.windowMinutes || 5,
+    isEnabled: true,
+    notifyEmail: threshold.notifyEmail ?? true,
+    notifyWebhook: threshold.notifyWebhook ?? false,
+    webhookUrl: threshold.webhookUrl || null,
+    cooldownMinutes: threshold.cooldownMinutes || 15,
+    createdById: threshold.createdById || null,
+  });
+  
+  return (result as any)[0]?.insertId || 0;
+}
+
+/**
+ * Update an alert threshold
+ */
+export async function updateAlertThreshold(id: number, updates: Partial<{
+  name: string;
+  serviceName: string | null;
+  metricType: string;
+  operator: string;
+  threshold: number;
+  windowMinutes: number;
+  isEnabled: boolean;
+  notifyEmail: boolean;
+  notifyWebhook: boolean;
+  webhookUrl: string | null;
+  cooldownMinutes: number;
+}>): Promise<void> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) throw new Error('Database not available');
+  
+  const { traefikAlertThresholds } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  
+  const updateData: any = { ...updates };
+  if (updates.threshold !== undefined) {
+    updateData.threshold = String(updates.threshold);
+  }
+  
+  await dbInstance.update(traefikAlertThresholds)
+    .set(updateData)
+    .where(eq(traefikAlertThresholds.id, id));
+}
+
+/**
+ * Delete an alert threshold
+ */
+export async function deleteAlertThreshold(id: number): Promise<void> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) throw new Error('Database not available');
+  
+  const { traefikAlertThresholds } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  
+  await dbInstance.delete(traefikAlertThresholds)
+    .where(eq(traefikAlertThresholds.id, id));
+}
+
+/**
+ * Check thresholds and create alerts if needed
+ */
+export async function checkThresholdsAndAlert(): Promise<{ checked: number; triggered: number }> {
+  const thresholds = await getAlertThresholds();
+  const enabledThresholds = thresholds.filter(t => t.isEnabled);
+  
+  if (enabledThresholds.length === 0) {
+    return { checked: 0, triggered: 0 };
+  }
+  
+  const stats = await getServiceTrafficStats();
+  if (!stats?.services) {
+    return { checked: 0, triggered: 0 };
+  }
+  
+  const dbInstance = await db.getDb();
+  if (!dbInstance) {
+    return { checked: 0, triggered: 0 };
+  }
+  
+  const { traefikAlerts, traefikAlertThresholds } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  
+  let triggered = 0;
+  
+  for (const threshold of enabledThresholds) {
+    // Check cooldown
+    if (threshold.lastTriggeredAt) {
+      const cooldownMs = threshold.cooldownMinutes * 60 * 1000;
+      if (Date.now() - new Date(threshold.lastTriggeredAt).getTime() < cooldownMs) {
+        continue;
+      }
+    }
+    
+    // Get relevant services
+    const services = threshold.serviceName 
+      ? stats.services.filter(s => s.name === threshold.serviceName)
+      : stats.services;
+    
+    for (const service of services) {
+      let currentValue: number;
+      
+      switch (threshold.metricType) {
+        case 'errors_4xx_rate':
+          currentValue = service.requestsTotal > 0 
+            ? (service.errors4xx / service.requestsTotal) * 100 
+            : 0;
+          break;
+        case 'errors_5xx_rate':
+          currentValue = service.requestsTotal > 0 
+            ? (service.errors5xx / service.requestsTotal) * 100 
+            : 0;
+          break;
+        case 'error_total_rate':
+          currentValue = service.requestsTotal > 0 
+            ? ((service.errors4xx + service.errors5xx) / service.requestsTotal) * 100 
+            : 0;
+          break;
+        case 'latency_avg':
+          currentValue = service.avgLatencyMs;
+          break;
+        case 'requests_per_second':
+          currentValue = service.requestsPerSecond;
+          break;
+        default:
+          continue;
+      }
+      
+      const thresholdValue = parseFloat(threshold.threshold);
+      let isTriggered = false;
+      
+      switch (threshold.operator) {
+        case 'gt':
+          isTriggered = currentValue > thresholdValue;
+          break;
+        case 'lt':
+          isTriggered = currentValue < thresholdValue;
+          break;
+        case 'gte':
+          isTriggered = currentValue >= thresholdValue;
+          break;
+        case 'lte':
+          isTriggered = currentValue <= thresholdValue;
+          break;
+        case 'eq':
+          isTriggered = currentValue === thresholdValue;
+          break;
+      }
+      
+      if (isTriggered) {
+        // Create alert
+        await dbInstance.insert(traefikAlerts).values({
+          thresholdId: threshold.id,
+          serviceName: service.name,
+          metricType: threshold.metricType,
+          currentValue: String(currentValue),
+          thresholdValue: threshold.threshold,
+          status: 'triggered',
+          message: `${threshold.name}: ${threshold.metricType} is ${currentValue.toFixed(2)} (threshold: ${threshold.operator} ${thresholdValue})`,
+        });
+        
+        // Update last triggered time
+        await dbInstance.update(traefikAlertThresholds)
+          .set({ lastTriggeredAt: new Date() })
+          .where(eq(traefikAlertThresholds.id, threshold.id));
+        
+        triggered++;
+        
+        // Send notifications
+        if (threshold.notifyEmail) {
+          await sendAlertNotification(threshold, service.name, currentValue, thresholdValue);
+        }
+        
+        if (threshold.notifyWebhook && threshold.webhookUrl) {
+          await sendWebhookNotification(threshold.webhookUrl, {
+            threshold: threshold.name,
+            service: service.name,
+            metric: threshold.metricType,
+            currentValue,
+            thresholdValue,
+            operator: threshold.operator,
+          });
+        }
+      }
+    }
+  }
+  
+  return { checked: enabledThresholds.length, triggered };
+}
+
+/**
+ * Send alert notification to owner
+ */
+async function sendAlertNotification(
+  threshold: AlertThreshold,
+  serviceName: string,
+  currentValue: number,
+  thresholdValue: number
+): Promise<void> {
+  try {
+    const { notifyOwner } = await import('./_core/notification');
+    await notifyOwner({
+      title: `⚠️ Traefik Alert: ${threshold.name}`,
+      content: `Service: ${serviceName}\nMetric: ${threshold.metricType}\nCurrent: ${currentValue.toFixed(2)}\nThreshold: ${threshold.operator} ${thresholdValue}`,
+    });
+  } catch (error) {
+    console.error('[Traefik] Failed to send alert notification:', error);
+  }
+}
+
+/**
+ * Send webhook notification
+ */
+async function sendWebhookNotification(url: string, data: any): Promise<void> {
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'traefik_alert',
+        timestamp: new Date().toISOString(),
+        ...data,
+      }),
+    });
+  } catch (error) {
+    console.error('[Traefik] Failed to send webhook notification:', error);
+  }
+}
+
+/**
+ * Get recent alerts
+ */
+export async function getRecentAlerts(limit: number = 50): Promise<any[]> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) return [];
+  
+  const { traefikAlerts } = await import('../drizzle/schema');
+  const { desc } = await import('drizzle-orm');
+  
+  return dbInstance.select()
+    .from(traefikAlerts)
+    .orderBy(desc(traefikAlerts.createdAt))
+    .limit(limit);
+}
+
+/**
+ * Acknowledge an alert
+ */
+export async function acknowledgeAlert(alertId: number, userId: number): Promise<void> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) throw new Error('Database not available');
+  
+  const { traefikAlerts } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  
+  await dbInstance.update(traefikAlerts)
+    .set({
+      status: 'acknowledged',
+      acknowledgedById: userId,
+      acknowledgedAt: new Date(),
+    })
+    .where(eq(traefikAlerts.id, alertId));
+}
+
+/**
+ * Resolve an alert
+ */
+export async function resolveAlert(alertId: number): Promise<void> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) throw new Error('Database not available');
+  
+  const { traefikAlerts } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  
+  await dbInstance.update(traefikAlerts)
+    .set({
+      status: 'resolved',
+      resolvedAt: new Date(),
+    })
+    .where(eq(traefikAlerts.id, alertId));
+}
+
+// ============ CONFIG FILE MANAGEMENT ============
+
+/**
+ * Get all config files
+ */
+export async function getConfigFiles(): Promise<any[]> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) return [];
+  
+  const { traefikConfigFiles } = await import('../drizzle/schema');
+  
+  return dbInstance.select().from(traefikConfigFiles);
+}
+
+/**
+ * Create or update a config file
+ */
+export async function saveConfigFile(config: {
+  id?: number;
+  name: string;
+  filePath: string;
+  format: 'yaml' | 'toml';
+  content: string;
+  isAutoApply: boolean;
+  createdById?: number;
+}): Promise<number> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) throw new Error('Database not available');
+  
+  const { traefikConfigFiles } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  
+  if (config.id) {
+    await dbInstance.update(traefikConfigFiles)
+      .set({
+        name: config.name,
+        filePath: config.filePath,
+        format: config.format,
+        content: config.content,
+        isAutoApply: config.isAutoApply,
+      })
+      .where(eq(traefikConfigFiles.id, config.id));
+    return config.id;
+  }
+  
+  const result = await dbInstance.insert(traefikConfigFiles).values({
+    name: config.name,
+    filePath: config.filePath,
+    format: config.format,
+    content: config.content,
+    isAutoApply: config.isAutoApply,
+    createdById: config.createdById || null,
+  });
+  
+  return (result as any)[0]?.insertId || 0;
+}
+
+/**
+ * Apply config file to Traefik (write to file system)
+ * Note: This requires the file path to be accessible from the server
+ */
+export async function applyConfigFile(configId: number): Promise<{ success: boolean; error?: string }> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) {
+    return { success: false, error: 'Database not available' };
+  }
+  
+  const { traefikConfigFiles } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  const fs = await import('fs/promises');
+  
+  const configs = await dbInstance.select()
+    .from(traefikConfigFiles)
+    .where(eq(traefikConfigFiles.id, configId));
+  
+  if (configs.length === 0) {
+    return { success: false, error: 'Config file not found' };
+  }
+  
+  const config = configs[0];
+  
+  try {
+    // Write content to file
+    await fs.writeFile(config.filePath, config.content || '', 'utf-8');
+    
+    // Update last applied time
+    await dbInstance.update(traefikConfigFiles)
+      .set({ lastAppliedAt: new Date(), lastError: null })
+      .where(eq(traefikConfigFiles.id, configId));
+    
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Save error to database
+    await dbInstance.update(traefikConfigFiles)
+      .set({ lastError: errorMessage })
+      .where(eq(traefikConfigFiles.id, configId));
+    
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Delete a config file
+ */
+export async function deleteConfigFile(configId: number): Promise<void> {
+  const dbInstance = await db.getDb();
+  if (!dbInstance) throw new Error('Database not available');
+  
+  const { traefikConfigFiles } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  
+  await dbInstance.delete(traefikConfigFiles)
+    .where(eq(traefikConfigFiles.id, configId));
+}

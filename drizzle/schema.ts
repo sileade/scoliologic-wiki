@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json, index, boolean } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json, index, boolean, decimal } from "drizzle-orm/mysql-core";
 import { relations } from "drizzle-orm";
 
 /**
@@ -489,3 +489,131 @@ export const pageTags = mysqlTable("page_tags", {
 
 export type PageTag = typeof pageTags.$inferSelect;
 export type InsertPageTag = typeof pageTags.$inferInsert;
+
+
+/**
+ * Traefik metrics history for trend analysis
+ */
+export const traefikMetrics = mysqlTable("traefik_metrics", {
+  id: int("id").autoincrement().primaryKey(),
+  serviceName: varchar("serviceName", { length: 255 }).notNull(),
+  requestsTotal: int("requestsTotal").default(0).notNull(),
+  requestsPerSecond: decimal("requestsPerSecond", { precision: 10, scale: 2 }).default("0"),
+  avgLatencyMs: int("avgLatencyMs").default(0).notNull(),
+  errors4xx: int("errors4xx").default(0).notNull(),
+  errors5xx: int("errors5xx").default(0).notNull(),
+  openConnections: int("openConnections").default(0),
+  collectedAt: timestamp("collectedAt").defaultNow().notNull(),
+}, (table) => [
+  index("traefik_metrics_service_idx").on(table.serviceName),
+  index("traefik_metrics_time_idx").on(table.collectedAt),
+  index("traefik_metrics_service_time_idx").on(table.serviceName, table.collectedAt),
+]);
+
+export type TraefikMetric = typeof traefikMetrics.$inferSelect;
+export type InsertTraefikMetric = typeof traefikMetrics.$inferInsert;
+
+/**
+ * Traefik alert thresholds configuration
+ */
+export const traefikAlertThresholds = mysqlTable("traefik_alert_thresholds", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  serviceName: varchar("serviceName", { length: 255 }), // null = all services
+  metricType: mysqlEnum("metricType", [
+    "errors_4xx_rate",
+    "errors_5xx_rate",
+    "latency_avg",
+    "latency_p95",
+    "requests_per_second",
+    "error_total_rate"
+  ]).notNull(),
+  operator: mysqlEnum("operator", ["gt", "lt", "gte", "lte", "eq"]).notNull(),
+  threshold: decimal("threshold", { precision: 10, scale: 2 }).notNull(),
+  windowMinutes: int("windowMinutes").default(5).notNull(),
+  isEnabled: boolean("isEnabled").default(true).notNull(),
+  notifyEmail: boolean("notifyEmail").default(true).notNull(),
+  notifyWebhook: boolean("notifyWebhook").default(false).notNull(),
+  webhookUrl: text("webhookUrl"),
+  cooldownMinutes: int("cooldownMinutes").default(15).notNull(),
+  lastTriggeredAt: timestamp("lastTriggeredAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdById: int("createdById"),
+});
+
+export type TraefikAlertThreshold = typeof traefikAlertThresholds.$inferSelect;
+export type InsertTraefikAlertThreshold = typeof traefikAlertThresholds.$inferInsert;
+
+/**
+ * Traefik alert history
+ */
+export const traefikAlerts = mysqlTable("traefik_alerts", {
+  id: int("id").autoincrement().primaryKey(),
+  thresholdId: int("thresholdId").notNull(),
+  serviceName: varchar("serviceName", { length: 255 }).notNull(),
+  metricType: varchar("metricType", { length: 100 }).notNull(),
+  currentValue: decimal("currentValue", { precision: 10, scale: 2 }).notNull(),
+  thresholdValue: decimal("thresholdValue", { precision: 10, scale: 2 }).notNull(),
+  status: mysqlEnum("status", ["triggered", "resolved", "acknowledged"]).default("triggered").notNull(),
+  message: text("message"),
+  acknowledgedById: int("acknowledgedById"),
+  acknowledgedAt: timestamp("acknowledgedAt"),
+  resolvedAt: timestamp("resolvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("traefik_alerts_threshold_idx").on(table.thresholdId),
+  index("traefik_alerts_service_idx").on(table.serviceName),
+  index("traefik_alerts_status_idx").on(table.status),
+  index("traefik_alerts_time_idx").on(table.createdAt),
+]);
+
+export type TraefikAlert = typeof traefikAlerts.$inferSelect;
+export type InsertTraefikAlert = typeof traefikAlerts.$inferInsert;
+
+/**
+ * Traefik configuration files for auto-apply
+ */
+export const traefikConfigFiles = mysqlTable("traefik_config_files", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  filePath: text("filePath").notNull(),
+  format: mysqlEnum("format", ["yaml", "toml"]).default("yaml").notNull(),
+  content: text("content"),
+  isAutoApply: boolean("isAutoApply").default(false).notNull(),
+  lastAppliedAt: timestamp("lastAppliedAt"),
+  lastError: text("lastError"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdById: int("createdById"),
+});
+
+export type TraefikConfigFile = typeof traefikConfigFiles.$inferSelect;
+export type InsertTraefikConfigFile = typeof traefikConfigFiles.$inferInsert;
+
+// Relations for Traefik tables
+export const traefikAlertThresholdsRelations = relations(traefikAlertThresholds, ({ one, many }) => ({
+  createdBy: one(users, {
+    fields: [traefikAlertThresholds.createdById],
+    references: [users.id],
+  }),
+  alerts: many(traefikAlerts),
+}));
+
+export const traefikAlertsRelations = relations(traefikAlerts, ({ one }) => ({
+  threshold: one(traefikAlertThresholds, {
+    fields: [traefikAlerts.thresholdId],
+    references: [traefikAlertThresholds.id],
+  }),
+  acknowledgedBy: one(users, {
+    fields: [traefikAlerts.acknowledgedById],
+    references: [users.id],
+  }),
+}));
+
+export const traefikConfigFilesRelations = relations(traefikConfigFiles, ({ one }) => ({
+  createdBy: one(users, {
+    fields: [traefikConfigFiles.createdById],
+    references: [users.id],
+  }),
+}));

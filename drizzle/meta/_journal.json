@@ -43,6 +43,13 @@
       "when": 1768386217546,
       "tag": "0005_harsh_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1768472203990,
+      "tag": "0006_strong_lord_tyger",
+      "breakpoints": true
     }
   ]
 }

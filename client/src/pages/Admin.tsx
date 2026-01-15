@@ -74,6 +74,8 @@ import { MetricsDashboard } from "@/components/MetricsDashboard";
 import { TraefikSettingsPanel } from "@/components/TraefikSettingsPanel";
 import { TraefikRoutersPanel } from "@/components/TraefikRoutersPanel";
 import { TraefikTrafficCharts } from "@/components/TraefikTrafficCharts";
+import { TraefikAlertsPanel } from "@/components/TraefikAlertsPanel";
+import { TraefikConfigPanel } from "@/components/TraefikConfigPanel";
 import { MinioSettingsPanel } from "@/components/MinioSettingsPanel";
 import { useTranslation } from "react-i18next";
 import { useLocalizedError } from "@/hooks/useLocalizedError";
@@ -292,6 +294,14 @@ export default function Admin() {
             <TabsTrigger value="traefik-traffic">
               <Activity className="h-4 w-4 mr-2" />
               Трафик
+            </TabsTrigger>
+            <TabsTrigger value="traefik-alerts">
+              <Activity className="h-4 w-4 mr-2" />
+              Алерты
+            </TabsTrigger>
+            <TabsTrigger value="traefik-config">
+              <Activity className="h-4 w-4 mr-2" />
+              Конфиги
             </TabsTrigger>
             <TabsTrigger value="minio">
               <Activity className="h-4 w-4 mr-2" />
@@ -734,6 +744,14 @@ export default function Admin() {
 
           <TabsContent value="traefik-traffic" className="mt-0">
             <TraefikTrafficCharts />
+          </TabsContent>
+
+          <TabsContent value="traefik-alerts" className="mt-0">
+            <TraefikAlertsPanel />
+          </TabsContent>
+
+          <TabsContent value="traefik-config" className="mt-0">
+            <TraefikConfigPanel />
           </TabsContent>
 
           <TabsContent value="minio" className="mt-0">

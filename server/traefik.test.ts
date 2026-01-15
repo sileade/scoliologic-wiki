@@ -216,4 +216,88 @@ describe('Traefik Module', () => {
       expect(settings === null || typeof settings === 'object').toBe(true);
     });
   });
+
+  describe('collectAndSaveMetrics', () => {
+    it('should return saved count of 0 when no metrics available', async () => {
+      const result = await traefik.collectAndSaveMetrics();
+      expect(result).toHaveProperty('saved');
+      expect(typeof result.saved).toBe('number');
+    });
+  });
+
+  describe('getHistoricalMetrics', () => {
+    it('should return array of metrics', async () => {
+      const metrics = await traefik.getHistoricalMetrics({});
+      expect(Array.isArray(metrics)).toBe(true);
+    });
+
+    it('should accept serviceName filter', async () => {
+      const metrics = await traefik.getHistoricalMetrics({ serviceName: 'test-service' });
+      expect(Array.isArray(metrics)).toBe(true);
+    });
+  });
+
+  describe('getMetricsTrends', () => {
+    it('should return trend data structure for hour period', async () => {
+      const trends = await traefik.getMetricsTrends({ period: 'hour' });
+      expect(trends).toHaveProperty('labels');
+      expect(trends).toHaveProperty('requestsTotal');
+      expect(trends).toHaveProperty('avgLatency');
+      expect(trends).toHaveProperty('errors4xx');
+      expect(trends).toHaveProperty('errors5xx');
+    });
+
+    it('should return trend data structure for day period', async () => {
+      const trends = await traefik.getMetricsTrends({ period: 'day' });
+      expect(Array.isArray(trends.labels)).toBe(true);
+    });
+
+    it('should return trend data structure for week period', async () => {
+      const trends = await traefik.getMetricsTrends({ period: 'week' });
+      expect(Array.isArray(trends.labels)).toBe(true);
+    });
+  });
+
+  describe('getAlertThresholds', () => {
+    it('should return array of thresholds', async () => {
+      const thresholds = await traefik.getAlertThresholds();
+      expect(Array.isArray(thresholds)).toBe(true);
+    });
+  });
+
+  describe('checkThresholdsAndAlert', () => {
+    it('should return checked and triggered counts', async () => {
+      const result = await traefik.checkThresholdsAndAlert();
+      expect(result).toHaveProperty('checked');
+      expect(result).toHaveProperty('triggered');
+      expect(typeof result.checked).toBe('number');
+      expect(typeof result.triggered).toBe('number');
+    });
+  });
+
+  describe('getRecentAlerts', () => {
+    it('should return array of alerts', async () => {
+      const alerts = await traefik.getRecentAlerts();
+      expect(Array.isArray(alerts)).toBe(true);
+    });
+
+    it('should respect limit parameter', async () => {
+      const alerts = await traefik.getRecentAlerts(10);
+      expect(Array.isArray(alerts)).toBe(true);
+    });
+  });
+
+  describe('getConfigFiles', () => {
+    it('should return array of config files', async () => {
+      const configs = await traefik.getConfigFiles();
+      expect(Array.isArray(configs)).toBe(true);
+    });
+  });
+
+  describe('cleanupOldMetrics', () => {
+    it('should return number of deleted records', async () => {
+      const deleted = await traefik.cleanupOldMetrics(30);
+      expect(typeof deleted).toBe('number');
+    });
+  });
 });

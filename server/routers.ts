@@ -2314,6 +2314,243 @@ export const appRouter = router({
         return { success: true };
       }),
   }),
+
+  // ============ TRAEFIK METRICS & ALERTS ============
+  traefikMetrics: router({
+    // Collect and save current metrics
+    collectMetrics: adminProcedure.mutation(async ({ ctx }) => {
+      const result = await traefik.collectAndSaveMetrics();
+      await db.logActivity({
+        userId: ctx.user.id,
+        action: "collect_traefik_metrics",
+        entityType: "settings",
+        details: { saved: result.saved },
+      });
+      return result;
+    }),
+
+    // Get historical metrics
+    getHistory: adminProcedure
+      .input(z.object({
+        serviceName: z.string().optional(),
+        startTime: z.date().optional(),
+        endTime: z.date().optional(),
+        limit: z.number().min(1).max(1000).default(100),
+      }).optional())
+      .query(async ({ input }) => {
+        return traefik.getHistoricalMetrics(input || {});
+      }),
+
+    // Get metrics trends
+    getTrends: adminProcedure
+      .input(z.object({
+        serviceName: z.string().optional(),
+        period: z.enum(["hour", "day", "week"]).default("day"),
+      }))
+      .query(async ({ input }) => {
+        return traefik.getMetricsTrends(input);
+      }),
+
+    // Cleanup old metrics
+    cleanup: adminProcedure
+      .input(z.object({ retentionDays: z.number().min(1).max(365).default(30) }))
+      .mutation(async ({ input, ctx }) => {
+        const deleted = await traefik.cleanupOldMetrics(input.retentionDays);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "cleanup_traefik_metrics",
+          entityType: "settings",
+          details: { deleted, retentionDays: input.retentionDays },
+        });
+        return { deleted };
+      }),
+  }),
+
+  traefikAlerts: router({
+    // Get all alert thresholds
+    getThresholds: adminProcedure.query(async () => {
+      return traefik.getAlertThresholds();
+    }),
+
+    // Create alert threshold
+    createThreshold: adminProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        serviceName: z.string().optional(),
+        metricType: z.enum(["errors_4xx_rate", "errors_5xx_rate", "latency_avg", "latency_p95", "requests_per_second", "error_total_rate"]),
+        operator: z.enum(["gt", "lt", "gte", "lte", "eq"]),
+        threshold: z.number(),
+        windowMinutes: z.number().min(1).max(60).default(5),
+        notifyEmail: z.boolean().default(true),
+        notifyWebhook: z.boolean().default(false),
+        webhookUrl: z.string().optional(),
+        cooldownMinutes: z.number().min(1).max(1440).default(15),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await traefik.createAlertThreshold({
+          ...input,
+          createdById: ctx.user.id,
+        });
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "create_traefik_alert_threshold",
+          entityType: "settings",
+          details: { name: input.name, metricType: input.metricType },
+        });
+        return { id };
+      }),
+
+    // Update alert threshold
+    updateThreshold: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(255).optional(),
+        serviceName: z.string().nullable().optional(),
+        metricType: z.string().optional(),
+        operator: z.string().optional(),
+        threshold: z.number().optional(),
+        windowMinutes: z.number().min(1).max(60).optional(),
+        isEnabled: z.boolean().optional(),
+        notifyEmail: z.boolean().optional(),
+        notifyWebhook: z.boolean().optional(),
+        webhookUrl: z.string().nullable().optional(),
+        cooldownMinutes: z.number().min(1).max(1440).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { id, ...updates } = input;
+        await traefik.updateAlertThreshold(id, updates);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_traefik_alert_threshold",
+          entityType: "settings",
+          entityId: id,
+          details: updates,
+        });
+        return { success: true };
+      }),
+
+    // Delete alert threshold
+    deleteThreshold: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await traefik.deleteAlertThreshold(input.id);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "delete_traefik_alert_threshold",
+          entityType: "settings",
+          entityId: input.id,
+        });
+        return { success: true };
+      }),
+
+    // Check thresholds and trigger alerts
+    checkThresholds: adminProcedure.mutation(async ({ ctx }) => {
+      const result = await traefik.checkThresholdsAndAlert();
+      await db.logActivity({
+        userId: ctx.user.id,
+        action: "check_traefik_thresholds",
+        entityType: "settings",
+        details: result,
+      });
+      return result;
+    }),
+
+    // Get recent alerts
+    getAlerts: adminProcedure
+      .input(z.object({ limit: z.number().min(1).max(200).default(50) }).optional())
+      .query(async ({ input }) => {
+        return traefik.getRecentAlerts(input?.limit || 50);
+      }),
+
+    // Acknowledge alert
+    acknowledgeAlert: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await traefik.acknowledgeAlert(input.id, ctx.user.id);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "acknowledge_traefik_alert",
+          entityType: "settings",
+          entityId: input.id,
+        });
+        return { success: true };
+      }),
+
+    // Resolve alert
+    resolveAlert: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await traefik.resolveAlert(input.id);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "resolve_traefik_alert",
+          entityType: "settings",
+          entityId: input.id,
+        });
+        return { success: true };
+      }),
+  }),
+
+  traefikConfig: router({
+    // Get all config files
+    getFiles: adminProcedure.query(async () => {
+      return traefik.getConfigFiles();
+    }),
+
+    // Save config file
+    saveFile: adminProcedure
+      .input(z.object({
+        id: z.number().optional(),
+        name: z.string().min(1).max(255),
+        filePath: z.string().min(1),
+        format: z.enum(["yaml", "toml"]),
+        content: z.string(),
+        isAutoApply: z.boolean().default(false),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await traefik.saveConfigFile({
+          ...input,
+          createdById: ctx.user.id,
+        });
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: input.id ? "update_traefik_config_file" : "create_traefik_config_file",
+          entityType: "settings",
+          entityId: id,
+          details: { name: input.name, filePath: input.filePath },
+        });
+        return { id };
+      }),
+
+    // Apply config file
+    applyFile: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await traefik.applyConfigFile(input.id);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "apply_traefik_config_file",
+          entityType: "settings",
+          entityId: input.id,
+          details: { success: result.success, error: result.error },
+        });
+        return result;
+      }),
+
+    // Delete config file
+    deleteFile: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        await traefik.deleteConfigFile(input.id);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "delete_traefik_config_file",
+          entityType: "settings",
+          entityId: input.id,
+        });
+        return { success: true };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
