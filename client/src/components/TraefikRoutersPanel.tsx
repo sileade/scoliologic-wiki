@@ -5,7 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RefreshCw, Globe, Server, Shield, AlertCircle, CheckCircle, XCircle, ExternalLink } from "lucide-react";
+import { RefreshCw, Globe, Server, Shield, AlertCircle, CheckCircle, XCircle, ExternalLink, Download, RotateCcw, Settings2, FileCode } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 interface Router {
@@ -33,8 +37,17 @@ interface Service {
 
 export function TraefikRoutersPanel() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [dockerDialogOpen, setDockerDialogOpen] = useState(false);
+  const [exportDomain, setExportDomain] = useState("");
+  const [exportEntryPoint, setExportEntryPoint] = useState("websecure");
+  const [exportCertResolver, setExportCertResolver] = useState("letsencrypt");
+  const [generatedConfig, setGeneratedConfig] = useState("");
+  const [configFormat, setConfigFormat] = useState<"yaml" | "toml">("yaml");
 
   const { data: traefikSettings } = trpc.admin.getTraefikSettings.useQuery();
+  const { data: dockerSettings } = trpc.admin.getDockerSettings.useQuery();
+  const { data: serviceStats } = trpc.admin.getTraefikServiceStats.useQuery();
 
   const { data: traefikData, refetch, isRefetching } = trpc.admin.getTraefikRouters.useQuery(undefined, {
     enabled: traefikSettings?.enabled ?? false,
@@ -329,6 +342,181 @@ export function TraefikRoutersPanel() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Export Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileCode className="w-5 h-5" />
+            Экспорт конфигурации
+          </CardTitle>
+          <CardDescription>
+            Генерация YAML/TOML конфигурации для Traefik file provider
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label>Домен</Label>
+                <Input 
+                  placeholder="example.com" 
+                  value={exportDomain}
+                  onChange={(e) => setExportDomain(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Entry Point</Label>
+                <Input 
+                  placeholder="websecure" 
+                  value={exportEntryPoint}
+                  onChange={(e) => setExportEntryPoint(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Cert Resolver</Label>
+                <Input 
+                  placeholder="letsencrypt" 
+                  value={exportCertResolver}
+                  onChange={(e) => setExportCertResolver(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button 
+                variant={configFormat === "yaml" ? "default" : "outline"}
+                onClick={() => setConfigFormat("yaml")}
+              >
+                YAML
+              </Button>
+              <Button 
+                variant={configFormat === "toml" ? "default" : "outline"}
+                onClick={() => setConfigFormat("toml")}
+              >
+                TOML
+              </Button>
+            </div>
+            
+            {generatedConfig && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Сгенерированная конфигурация</Label>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(generatedConfig);
+                      toast.success("Конфигурация скопирована");
+                    }}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Копировать
+                  </Button>
+                </div>
+                <Textarea 
+                  value={generatedConfig} 
+                  readOnly 
+                  className="font-mono text-xs h-48"
+                />
+              </div>
+            )}
+            
+            <p className="text-sm text-muted-foreground">
+              Скопируйте сгенерированную конфигурацию в файл Traefik file provider для добавления роутеров.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Service Traffic Stats */}
+      {serviceStats?.services && serviceStats.services.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Статистика трафика по сервисам</CardTitle>
+            <CardDescription>Данные из Prometheus metrics</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Сервис</TableHead>
+                  <TableHead>Всего запросов</TableHead>
+                  <TableHead>Ср. латентность</TableHead>
+                  <TableHead>Ошибки 4xx</TableHead>
+                  <TableHead>Ошибки 5xx</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {serviceStats.services.map((service) => (
+                  <TableRow key={service.name}>
+                    <TableCell className="font-medium">{service.name}</TableCell>
+                    <TableCell>{service.requestsTotal.toLocaleString()}</TableCell>
+                    <TableCell>{service.avgLatencyMs} мс</TableCell>
+                    <TableCell>
+                      <Badge variant={service.errors4xx > 0 ? "destructive" : "outline"}>
+                        {service.errors4xx}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={service.errors5xx > 0 ? "destructive" : "outline"}>
+                        {service.errors5xx}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Docker Integration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings2 className="w-5 h-5" />
+            Docker интеграция
+          </CardTitle>
+          <CardDescription>
+            Управление Traefik через Docker API
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Статус Docker</p>
+              <p className="text-sm text-muted-foreground">
+                {dockerSettings?.enabled ? (
+                  <span className="text-green-600">Включено ({dockerSettings.host || dockerSettings.socketPath})</span>
+                ) : (
+                  <span className="text-muted-foreground">Не настроено</span>
+                )}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                onClick={() => setDockerDialogOpen(true)}
+              >
+                <Settings2 className="w-4 h-4 mr-2" />
+                Настройки
+              </Button>
+              {dockerSettings?.enabled && (
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    toast.info("Перезагрузка Traefik...");
+                  }}
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Перезагрузить Traefik
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Dashboard Link */}
       {traefikSettings?.dashboardUrl && (

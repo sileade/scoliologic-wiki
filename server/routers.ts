@@ -1440,6 +1440,139 @@ export const appRouter = router({
       return traefik.checkHealth();
     }),
 
+    // Export YAML configuration for multiple pages
+    exportTraefikYamlConfig: adminProcedure
+      .input(z.object({
+        pageIds: z.array(z.number()),
+        domain: z.string(),
+        entryPoint: z.string().optional(),
+        certResolver: z.string().optional(),
+        serviceUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const configs: Array<{
+          pageSlug: string;
+          domain: string;
+          entryPoint?: string;
+          certResolver?: string;
+          serviceUrl?: string;
+        }> = [];
+        
+        for (const pageId of input.pageIds) {
+          const page = await db.getPageById(pageId);
+          if (page) {
+            configs.push({
+              pageSlug: page.slug,
+              domain: input.domain,
+              entryPoint: input.entryPoint,
+              certResolver: input.certResolver,
+              serviceUrl: input.serviceUrl,
+            });
+          }
+        }
+        
+        const yamlConfig = traefik.generateFullYamlConfig(configs);
+        
+        return {
+          success: true,
+          yamlConfig,
+          pageCount: configs.length,
+        };
+      }),
+
+    // Export TOML configuration for a single page
+    exportTraefikTomlConfig: adminProcedure
+      .input(z.object({
+        pageId: z.number(),
+        domain: z.string(),
+        entryPoint: z.string().optional(),
+        certResolver: z.string().optional(),
+        serviceUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const page = await db.getPageById(input.pageId);
+        if (!page) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+        }
+        
+        const tomlConfig = traefik.generateTomlConfig(page.slug, {
+          domain: input.domain,
+          entryPoint: input.entryPoint,
+          certResolver: input.certResolver,
+          serviceUrl: input.serviceUrl,
+        });
+        
+        return {
+          success: true,
+          tomlConfig,
+          routerName: `wiki-${page.slug}`,
+        };
+      }),
+
+    // Get Prometheus metrics from Traefik
+    getTraefikPrometheusMetrics: adminProcedure.query(async () => {
+      return traefik.getPrometheusMetrics();
+    }),
+
+    // Get service traffic statistics
+    getTraefikServiceStats: adminProcedure.query(async () => {
+      return traefik.getServiceTrafficStats();
+    }),
+
+    // Docker settings
+    getDockerSettings: adminProcedure.query(async () => {
+      const settings = await traefik.getDockerSettings();
+      return {
+        enabled: settings?.enabled ?? false,
+        socketPath: settings?.socketPath ?? "/var/run/docker.sock",
+        host: settings?.host ?? "",
+        port: settings?.port ?? 2375,
+        useTLS: settings?.useTLS ?? false,
+        certPath: settings?.certPath ?? "",
+        keyPath: settings?.keyPath ?? "",
+        caPath: settings?.caPath ?? "",
+      };
+    }),
+
+    saveDockerSettings: adminProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        socketPath: z.string().optional(),
+        host: z.string().optional(),
+        port: z.number().min(1).max(65535).optional(),
+        useTLS: z.boolean().optional(),
+        certPath: z.string().optional(),
+        keyPath: z.string().optional(),
+        caPath: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await traefik.saveDockerSettings(input);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_docker_settings",
+          entityType: "settings",
+          details: { enabled: input.enabled },
+        });
+        return { success: true };
+      }),
+
+    // Get Docker containers
+    getDockerContainers: adminProcedure.query(async () => {
+      return traefik.getDockerContainers();
+    }),
+
+    // Reload Traefik configuration
+    reloadTraefikConfig: adminProcedure.mutation(async ({ ctx }) => {
+      const result = await traefik.reloadTraefikConfig();
+      await db.logActivity({
+        userId: ctx.user.id,
+        action: "reload_traefik_config",
+        entityType: "settings",
+        details: { success: result.success },
+      });
+      return result;
+    }),
+
     // MinIO S3 settings
     getMinioSettings: adminProcedure.query(async () => {
       const settings = await db.getMinioSettings();
