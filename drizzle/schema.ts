@@ -617,3 +617,54 @@ export const traefikConfigFilesRelations = relations(traefikConfigFiles, ({ one 
     references: [users.id],
   }),
 }));
+
+/**
+ * Notification integrations (Telegram, Slack, etc.)
+ */
+export const notificationIntegrations = mysqlTable("notification_integrations", {
+  id: int("id").autoincrement().primaryKey(),
+  provider: mysqlEnum("provider", ["telegram", "slack", "discord", "email"]).notNull(),
+  config: text("config").notNull(), // JSON config
+  isEnabled: boolean("isEnabled").default(true).notNull(),
+  lastTestedAt: timestamp("lastTestedAt"),
+  lastTestSuccess: boolean("lastTestSuccess"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("notification_integrations_provider_idx").on(table.provider),
+]);
+
+export type NotificationIntegration = typeof notificationIntegrations.$inferSelect;
+export type InsertNotificationIntegration = typeof notificationIntegrations.$inferInsert;
+
+/**
+ * Notification logs for tracking sent notifications
+ */
+export const notificationLogs = mysqlTable("notification_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  provider: mysqlEnum("provider", ["telegram", "slack", "discord", "email", "webhook"]).notNull(),
+  alertId: int("alertId"),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message"),
+  severity: mysqlEnum("severity", ["info", "warning", "error", "critical"]).default("info").notNull(),
+  success: boolean("success").default(false).notNull(),
+  error: text("error"),
+  messageId: varchar("messageId", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("notification_logs_provider_idx").on(table.provider),
+  index("notification_logs_alert_idx").on(table.alertId),
+  index("notification_logs_time_idx").on(table.createdAt),
+  index("notification_logs_success_idx").on(table.success),
+]);
+
+export type NotificationLog = typeof notificationLogs.$inferSelect;
+export type InsertNotificationLog = typeof notificationLogs.$inferInsert;
+
+// Relations for notification integrations
+export const notificationLogsRelations = relations(notificationLogs, ({ one }) => ({
+  alert: one(traefikAlerts, {
+    fields: [notificationLogs.alertId],
+    references: [traefikAlerts.id],
+  }),
+}));

@@ -15,6 +15,7 @@ import { ENV } from "./_core/env";
 import { generatePDF, generateMultiPagePDF } from "./pdf";
 import { generateMarkdownFile, generateMarkdownBundle, markdownToTipTap } from "./markdown";
 import * as traefik from "./traefik";
+import * as notifications from "./notifications";
 
 // Admin procedure middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -1955,6 +1956,159 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         await db.upsertNotificationPreferences(ctx.user.id, input);
         return { success: true };
+      }),
+
+    // ============ INTEGRATIONS (Admin only) ============
+    // Get all integrations
+    getIntegrations: adminProcedure.query(async () => {
+      return notifications.getAllIntegrations();
+    }),
+
+    // Get specific integration settings
+    getIntegration: adminProcedure
+      .input(z.object({ provider: z.enum(["telegram", "slack"]) }))
+      .query(async ({ input }) => {
+        const settings = await notifications.getIntegrationSettings(input.provider);
+        if (settings) {
+          return {
+            ...settings,
+            config: JSON.parse(settings.config),
+          };
+        }
+        return null;
+      }),
+
+    // Save integration settings
+    saveIntegration: adminProcedure
+      .input(z.object({
+        provider: z.enum(["telegram", "slack"]),
+        config: z.union([
+          z.object({
+            botToken: z.string(),
+            chatId: z.string(),
+            parseMode: z.enum(["HTML", "Markdown", "MarkdownV2"]).optional(),
+          }),
+          z.object({
+            webhookUrl: z.string(),
+            channel: z.string().optional(),
+            username: z.string().optional(),
+            iconEmoji: z.string().optional(),
+          }),
+        ]),
+        isEnabled: z.boolean().default(true),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await notifications.saveIntegrationSettings(
+          input.provider,
+          input.config as notifications.TelegramConfig | notifications.SlackConfig,
+          input.isEnabled
+        );
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "save_notification_integration",
+          entityType: "settings",
+          details: { provider: input.provider },
+        });
+        return { success: true };
+      }),
+
+    // Toggle integration
+    toggleIntegration: adminProcedure
+      .input(z.object({
+        provider: z.enum(["telegram", "slack"]),
+        isEnabled: z.boolean(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await notifications.toggleIntegration(input.provider, input.isEnabled);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: input.isEnabled ? "enable_notification_integration" : "disable_notification_integration",
+          entityType: "settings",
+          details: { provider: input.provider },
+        });
+        return { success: true };
+      }),
+
+    // Delete integration
+    deleteIntegration: adminProcedure
+      .input(z.object({ provider: z.enum(["telegram", "slack"]) }))
+      .mutation(async ({ input, ctx }) => {
+        await notifications.deleteIntegration(input.provider);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "delete_notification_integration",
+          entityType: "settings",
+          details: { provider: input.provider },
+        });
+        return { success: true };
+      }),
+
+    // Test notification
+    testNotification: adminProcedure
+      .input(z.object({
+        provider: z.enum(["telegram", "slack"]),
+        config: z.union([
+          z.object({
+            botToken: z.string(),
+            chatId: z.string(),
+            parseMode: z.enum(["HTML", "Markdown", "MarkdownV2"]).optional(),
+          }),
+          z.object({
+            webhookUrl: z.string(),
+            channel: z.string().optional(),
+            username: z.string().optional(),
+            iconEmoji: z.string().optional(),
+          }),
+        ]),
+      }))
+      .mutation(async ({ input }) => {
+        return notifications.testNotification(
+          input.provider,
+          input.config as notifications.TelegramConfig | notifications.SlackConfig
+        );
+      }),
+
+    // Get Telegram bot info
+    getTelegramBotInfo: adminProcedure
+      .input(z.object({ botToken: z.string() }))
+      .query(async ({ input }) => {
+        return notifications.getTelegramBotInfo(input.botToken);
+      }),
+
+    // Validate configs
+    validateTelegramToken: adminProcedure
+      .input(z.object({ token: z.string() }))
+      .query(({ input }) => {
+        return { valid: notifications.validateTelegramToken(input.token) };
+      }),
+
+    validateSlackWebhook: adminProcedure
+      .input(z.object({ url: z.string() }))
+      .query(({ input }) => {
+        return { valid: notifications.validateSlackWebhook(input.url) };
+      }),
+
+    // Get notification logs
+    getLogs: adminProcedure
+      .input(z.object({ limit: z.number().min(1).max(500).default(50) }).optional())
+      .query(async ({ input }) => {
+        return notifications.getNotificationLogs(input?.limit || 50);
+      }),
+
+    // Send manual notification (for testing)
+    sendManual: adminProcedure
+      .input(z.object({
+        title: z.string(),
+        message: z.string(),
+        severity: z.enum(["info", "warning", "error", "critical"]).default("info"),
+      }))
+      .mutation(async ({ input }) => {
+        return notifications.sendAlertNotification({
+          title: input.title,
+          message: input.message,
+          severity: input.severity,
+          timestamp: new Date(),
+        });
       }),
   }),
 

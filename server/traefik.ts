@@ -1204,7 +1204,7 @@ export async function checkThresholdsAndAlert(): Promise<{ checked: number; trig
 }
 
 /**
- * Send alert notification to owner
+ * Send alert notification to owner and configured integrations (Telegram/Slack)
  */
 async function sendAlertNotification(
   threshold: AlertThreshold,
@@ -1212,6 +1212,7 @@ async function sendAlertNotification(
   currentValue: number,
   thresholdValue: number
 ): Promise<void> {
+  // Send to owner via built-in notification
   try {
     const { notifyOwner } = await import('./_core/notification');
     await notifyOwner({
@@ -1219,7 +1220,23 @@ async function sendAlertNotification(
       content: `Service: ${serviceName}\nMetric: ${threshold.metricType}\nCurrent: ${currentValue.toFixed(2)}\nThreshold: ${threshold.operator} ${thresholdValue}`,
     });
   } catch (error) {
-    console.error('[Traefik] Failed to send alert notification:', error);
+    console.error('[Traefik] Failed to send owner notification:', error);
+  }
+  
+  // Send to Telegram/Slack integrations
+  try {
+    const notifications = await import('./notifications');
+    await notifications.sendAlertNotification({
+      title: `Traefik Alert: ${threshold.name}`,
+      message: `Сервис ${serviceName} превысил порог ${threshold.metricType}.\nТекущее значение: ${currentValue.toFixed(2)}\nПорог: ${threshold.operator} ${thresholdValue}`,
+      severity: currentValue > thresholdValue * 1.5 ? 'critical' : 'warning',
+      serviceName,
+      metricValue: currentValue.toFixed(2),
+      thresholdValue: String(thresholdValue),
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    console.error('[Traefik] Failed to send Telegram/Slack notification:', error);
   }
 }
 

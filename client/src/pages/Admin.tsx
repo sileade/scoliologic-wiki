@@ -75,6 +75,7 @@ import { TraefikSettingsPanel } from "@/components/TraefikSettingsPanel";
 import { TraefikRoutersPanel } from "@/components/TraefikRoutersPanel";
 import { TraefikTrafficCharts } from "@/components/TraefikTrafficCharts";
 import { TraefikAlertsPanel } from "@/components/TraefikAlertsPanel";
+import { NotificationIntegrationsPanel } from "@/components/NotificationIntegrationsPanel";
 import { TraefikConfigPanel } from "@/components/TraefikConfigPanel";
 import { MinioSettingsPanel } from "@/components/MinioSettingsPanel";
 import { useTranslation } from "react-i18next";
@@ -306,6 +307,10 @@ export default function Admin() {
             <TabsTrigger value="minio">
               <Activity className="h-4 w-4 mr-2" />
               MinIO S3
+            </TabsTrigger>
+            <TabsTrigger value="notifications-integrations">
+              <Activity className="h-4 w-4 mr-2" />
+              Telegram/Slack
             </TabsTrigger>
             <TabsTrigger value="metrics">
               <Activity className="h-4 w-4 mr-2" />
@@ -756,6 +761,10 @@ export default function Admin() {
 
           <TabsContent value="minio" className="mt-0">
             <MinioSettingsPanel />
+          </TabsContent>
+
+          <TabsContent value="notifications-integrations" className="mt-0">
+            <NotificationIntegrationsPanel />
           </TabsContent>
 
           <TabsContent value="metrics" className="mt-0">
