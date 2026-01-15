@@ -462,3 +462,13 @@
 - [x] Создание CODE_REVIEW_FINAL.md с подробным ревью
 - [x] Финальное тестирование (190 тестов, TypeScript OK)
 - [x] Подготовка отчёта о ревью
+
+## Production деплой на свой сервер
+- [x] docker-compose.production.yml для production
+- [x] Dockerfile для приложения
+- [x] Конфигурация Traefik с SSL (Let's Encrypt)
+- [x] Настройка S3 хранилища (MinIO)
+- [x] .env.production.example с переменными окружения
+- [x] DEPLOYMENT.md с инструкциями
+- [x] deploy.sh - скрипт быстрого развёртывания
+- [x] storage-s3.ts - модуль для MinIO/S3
