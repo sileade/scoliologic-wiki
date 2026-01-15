@@ -394,23 +394,67 @@
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
   }
   
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   
   .scrollbar-thin::-webkit-scrollbar-track {
-    @apply bg-transparent;
+    @apply bg-muted/30 rounded-full;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full;
+    @apply bg-muted-foreground/40 rounded-full;
+    transition: background-color 0.2s ease;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/60;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:active {
+    @apply bg-muted-foreground/80;
+  }
+  
+  /* Horizontal scrollbar for tabs */
+  .tabs-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.5 0 0 / 40%) transparent;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    overscroll-behavior-x: contain; /* Prevent page scroll when reaching edge */
+  }
+  
+  .tabs-scrollbar::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  .tabs-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+    margin: 0 4px;
+  }
+  
+  .tabs-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+    min-width: 40px;
+  }
+  
+  .tabs-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-muted-foreground/50;
+  }
+  
+  /* Firefox scrollbar colors */
+  @supports (scrollbar-color: auto) {
+    .tabs-scrollbar {
+      scrollbar-color: oklch(0.5 0 0 / 30%) transparent;
+    }
+    
+    .tabs-scrollbar:hover {
+      scrollbar-color: oklch(0.5 0 0 / 50%) transparent;
+    }
   }
 }
 

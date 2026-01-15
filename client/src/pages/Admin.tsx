@@ -233,8 +233,8 @@ export default function Admin() {
       <main className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="border-b bg-background px-6 py-4">
-            <ScrollArea className="w-full">
-              <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-max">
+            <div className="overflow-x-auto tabs-scrollbar pb-2">
+              <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-max gap-1">
             <TabsTrigger value="dashboard">
               <Activity className="h-4 w-4 mr-2" />
               {t("admin.dashboard")}
@@ -277,7 +277,7 @@ export default function Admin() {
               Ollama AI
             </TabsTrigger>
               </TabsList>
-            </ScrollArea>
+            </div>
           </div>
           
           <div className="flex-1 overflow-auto p-6">
