@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import * as db from "./db";
-import { invokeLLM } from "./_core/llm";
+// invokeLLM replaced with ollama.chat for local deployment
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as ollama from "./ollama";
@@ -766,7 +766,7 @@ export const appRouter = router({
         const systemPrompt = "You are a professional wiki content assistant. Help users write clear, well-structured documentation.";
         const userPrompt = `${prompts[input.action]}\n\n${input.context ? `Context: ${input.context}\n\n` : ""}${input.text}`;
         
-        const response = await invokeLLM({
+        const response = await ollama.chat({
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -786,7 +786,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const textBeforeCursor = input.text.substring(0, input.cursorPosition);
         
-        const response = await invokeLLM({
+        const response = await ollama.chat({
           messages: [
             { role: "system", content: "You are a wiki content assistant. Complete the following text naturally. Return only the completion, not the original text." },
             { role: "user", content: `Complete this text:\n\n${textBeforeCursor}` },
@@ -857,6 +857,47 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const condensed = await ollama.condenseText(input.text, input.targetLength);
         return { condensed };
+      }),
+    
+    // Analyze file content for folder import
+    analyzeFileContent: protectedProcedure
+      .input(z.object({
+        content: z.string(),
+        filename: z.string(),
+        mimeType: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await ollama.analyzeFileContent(
+          input.content,
+          input.filename,
+          input.mimeType
+        );
+        return result;
+      }),
+    
+    // Analyze folder structure for import
+    analyzeFolderStructure: protectedProcedure
+      .input(z.object({
+        files: z.array(z.object({
+          path: z.string(),
+          name: z.string(),
+          type: z.string(),
+        })),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await ollama.analyzeFolderStructure(input.files);
+        return result;
+      }),
+    
+    // Translate text
+    translate: protectedProcedure
+      .input(z.object({
+        text: z.string(),
+        targetLanguage: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const translated = await ollama.translateText(input.text, input.targetLanguage);
+        return { translated };
       }),
   }),
 
@@ -2771,33 +2812,19 @@ function splitIntoChunks(text: string, maxLength: number): string[] {
 }
 
 async function generateEmbedding(text: string): Promise<number[]> {
-  // Use LLM to generate a simple embedding representation
-  // In production, this would use a dedicated embedding model
-  const response = await invokeLLM({
-    messages: [
-      { role: "system", content: "Generate a semantic representation of the following text as a JSON array of 384 floating point numbers between -1 and 1. Return only the JSON array." },
-      { role: "user", content: text.substring(0, 1000) },
-    ],
-  });
-  
+  // Use Ollama for embeddings
   try {
-    const rawContent = response.choices[0]?.message?.content || "[]";
-    const content = typeof rawContent === "string" ? rawContent : "[]";
-    const match = content.match(/\[[\s\S]*\]/);
-    if (match) {
-      return JSON.parse(match[0]);
-    }
+    const embedding = await ollama.generateEmbedding(text.substring(0, 1000));
+    return embedding;
   } catch {
-    // Fallback: simple hash-based embedding
+    // Fallback if Ollama is not available - generate deterministic pseudo-embedding
+    const embedding: number[] = [];
+    for (let i = 0; i < 384; i++) {
+      const charCode = text.charCodeAt(i % text.length) || 0;
+      embedding.push((charCode / 128) - 1);
+    }
+    return embedding;
   }
-  
-  // Fallback: generate deterministic pseudo-embedding from text
-  const embedding: number[] = [];
-  for (let i = 0; i < 384; i++) {
-    const charCode = text.charCodeAt(i % text.length) || 0;
-    embedding.push((charCode / 128) - 1);
-  }
-  return embedding;
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {

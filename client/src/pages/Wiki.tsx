@@ -7,6 +7,7 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { FavoritesSidebar } from "@/components/FavoritesSidebar";
 import { TagInput } from "@/components/TagInput";
 import { PageTree } from "@/components/PageTree";
+import { FolderImport } from "@/components/FolderImport";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -416,6 +417,18 @@ export default function Wiki() {
                 onEditPage={(page) => setLocation(`/wiki/${page.slug}`)}
                 isAdmin={isAdmin}
               />
+              
+              {/* Folder Import - only for users with edit permission */}
+              {canEdit && (
+                <div className="border-t p-3">
+                  <FolderImport
+                    parentPageId={currentPage?.id}
+                    onImportComplete={() => {
+                      // Refresh page tree after import
+                    }}
+                  />
+                </div>
+              )}
             </ScrollArea>
           </ResizablePanel>
           

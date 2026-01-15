@@ -403,3 +403,164 @@ export async function getHealthStatus(url: string): Promise<{
     lastChecked: Date.now(),
   };
 }
+
+
+/**
+ * Chat with LLM - compatible with invokeLLM interface
+ * This function provides OpenAI-like message format support
+ */
+export async function chat(options: {
+  messages: Array<{ role: string; content: string }>;
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<{ choices: Array<{ message: { content: string } }> }> {
+  try {
+    // Convert messages to a single prompt
+    const prompt = options.messages
+      .map((m) => {
+        if (m.role === "system") {
+          return `System: ${m.content}`;
+        } else if (m.role === "user") {
+          return `User: ${m.content}`;
+        } else if (m.role === "assistant") {
+          return `Assistant: ${m.content}`;
+        }
+        return m.content;
+      })
+      .join("\n\n");
+
+    const response = await ollamaClient.post("/api/generate", {
+      model: LLM_MODEL,
+      prompt: prompt + "\n\nAssistant:",
+      stream: false,
+      temperature: options.temperature || 0.7,
+      num_predict: options.maxTokens || 1024,
+    });
+
+    return {
+      choices: [
+        {
+          message: {
+            content: response.data.response || "",
+          },
+        },
+      ],
+    };
+  } catch (error) {
+    console.error("[Ollama] Chat error:", error);
+    throw new Error("Failed to generate response from Ollama");
+  }
+}
+
+/**
+ * Translate text to specified language
+ */
+export async function translateText(text: string, targetLanguage: string): Promise<string> {
+  const prompt = `Translate the following text to ${targetLanguage}. Only return the translated text without any explanations:
+
+${text}`;
+
+  return generateText(prompt, { temperature: 0.3, maxTokens: 1024 });
+}
+
+/**
+ * Analyze file content and generate article structure
+ * Used for folder import feature
+ */
+export async function analyzeFileContent(
+  content: string,
+  filename: string,
+  mimeType: string
+): Promise<{
+  title: string;
+  summary: string;
+  suggestedTags: string[];
+  markdownContent: string;
+}> {
+  const prompt = `Analyze the following file content and convert it to a wiki article.
+
+Filename: ${filename}
+Type: ${mimeType}
+Content:
+${content.substring(0, 4000)}
+
+Please provide:
+1. A clear title for the article
+2. A brief summary (1-2 sentences)
+3. Suggested tags (3-5 keywords)
+4. The content formatted as proper Markdown
+
+Respond in JSON format:
+{
+  "title": "...",
+  "summary": "...",
+  "suggestedTags": ["tag1", "tag2"],
+  "markdownContent": "..."
+}`;
+
+  const response = await generateText(prompt, { temperature: 0.4, maxTokens: 2048 });
+
+  try {
+    const parsed = JSON.parse(response);
+    return {
+      title: parsed.title || filename.replace(/\.[^/.]+$/, ""),
+      summary: parsed.summary || "",
+      suggestedTags: Array.isArray(parsed.suggestedTags) ? parsed.suggestedTags : [],
+      markdownContent: parsed.markdownContent || content,
+    };
+  } catch {
+    // Fallback if JSON parsing fails
+    return {
+      title: filename.replace(/\.[^/.]+$/, ""),
+      summary: "",
+      suggestedTags: [],
+      markdownContent: content,
+    };
+  }
+}
+
+/**
+ * Generate folder structure description for import
+ */
+export async function analyzeFolderStructure(
+  files: Array<{ path: string; name: string; type: string }>
+): Promise<{
+  suggestedStructure: Array<{
+    path: string;
+    title: string;
+    isFolder: boolean;
+    children?: string[];
+  }>;
+  summary: string;
+}> {
+  const fileList = files.map((f) => `${f.path} (${f.type})`).join("\n");
+
+  const prompt = `Analyze the following folder structure and suggest how to organize it as wiki pages:
+
+Files:
+${fileList}
+
+Suggest a hierarchical structure for wiki pages based on the folder structure.
+Respond in JSON format:
+{
+  "suggestedStructure": [
+    {"path": "folder/file.txt", "title": "Suggested Title", "isFolder": false}
+  ],
+  "summary": "Brief description of the folder contents"
+}`;
+
+  const response = await generateText(prompt, { temperature: 0.3, maxTokens: 1024 });
+
+  try {
+    return JSON.parse(response);
+  } catch {
+    return {
+      suggestedStructure: files.map((f) => ({
+        path: f.path,
+        title: f.name.replace(/\.[^/.]+$/, ""),
+        isFolder: f.type === "folder",
+      })),
+      summary: "Folder structure imported",
+    };
+  }
+}

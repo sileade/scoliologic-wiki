@@ -360,6 +360,24 @@
     "importSuccess": "Импорт завершён",
     "importError": "Ошибка импорта"
   },
+  "folderImport": {
+    "title": "Импорт папки",
+    "dropHere": "Перетащите папку сюда",
+    "or": "или",
+    "browse": "выберите",
+    "description": "AI проанализирует файлы и создаст wiki-страницы",
+    "dialogDescription": "Выберите файлы для импорта как wiki-страницы. AI может проанализировать и отформатировать содержимое.",
+    "analyzeAI": "Анализ с AI",
+    "analysisComplete": "AI-анализ завершён",
+    "importing": "Импорт...",
+    "import": "Импортировать",
+    "importComplete": "Импортировано {{count}} страниц",
+    "selectAll": "Выбрать все",
+    "deselectAll": "Снять выбор",
+    "filesSelected": "Выбрано файлов: {{count}}",
+    "analyzingFiles": "Анализ файлов...",
+    "creatingPages": "Создание страниц..."
+  },
   "errors": {
     "generic": "Произошла ошибка",
     "networkError": "Ошибка сети. Проверьте подключение к интернету",

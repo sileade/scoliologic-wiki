@@ -360,6 +360,24 @@
     "importSuccess": "Import completed",
     "importError": "Import error"
   },
+  "folderImport": {
+    "title": "Import Folder",
+    "dropHere": "Drop folder here",
+    "or": "or",
+    "browse": "browse",
+    "description": "AI will analyze files and create wiki pages",
+    "dialogDescription": "Select files to import as wiki pages. AI can analyze and format content.",
+    "analyzeAI": "Analyze with AI",
+    "analysisComplete": "AI analysis complete",
+    "importing": "Importing...",
+    "import": "Import",
+    "importComplete": "Imported {{count}} pages",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "filesSelected": "Files selected: {{count}}",
+    "analyzingFiles": "Analyzing files...",
+    "creatingPages": "Creating pages..."
+  },
   "errors": {
     "generic": "An error occurred",
     "networkError": "Network error. Check your internet connection",
