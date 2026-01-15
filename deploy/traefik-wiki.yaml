@@ -1,0 +1,36 @@
+# Traefik Dynamic Configuration for Scoliologic Wiki
+# Скопируйте в /etc/traefik/dynamic/wiki.yaml на сервере Traefik (10.0.0.236)
+
+http:
+  routers:
+    wiki:
+      rule: "Host(`wiki.sclg.io`)"
+      entryPoints:
+        - websecure
+      service: wiki
+      tls:
+        certResolver: letsencrypt
+
+    wiki-http:
+      rule: "Host(`wiki.sclg.io`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      service: wiki
+
+  services:
+    wiki:
+      loadBalancer:
+        servers:
+          - url: "http://10.0.0.221:3000"
+        healthCheck:
+          path: /
+          interval: "30s"
+          timeout: "5s"
+
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
