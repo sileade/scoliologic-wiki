@@ -1154,6 +1154,181 @@ export const appRouter = router({
       await monitoring.performHealthCheck();
       return { success: true };
     }),
+
+    // AI Agent settings
+    getAIAgentSettings: adminProcedure.query(async () => {
+      const settings = await db.getAIAgentSettings();
+      return {
+        enabled: settings?.enabled ?? false,
+        analysisModel: settings?.analysisModel ?? "llama3.2",
+        monitoringInterval: settings?.monitoringInterval ?? 60,
+        autoFixEnabled: settings?.autoFixEnabled ?? true,
+        maxAutoFixAttempts: settings?.maxAutoFixAttempts ?? 3,
+        escalationThreshold: settings?.escalationThreshold ?? 5,
+        loadBalancerEnabled: settings?.loadBalancerEnabled ?? false,
+        loadBalancerType: settings?.loadBalancerType ?? "traefik",
+        selfLearningEnabled: settings?.selfLearningEnabled ?? false,
+        logRetentionDays: settings?.logRetentionDays ?? 30,
+      };
+    }),
+
+    saveAIAgentSettings: adminProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        analysisModel: z.string(),
+        monitoringInterval: z.number().min(10).max(3600),
+        autoFixEnabled: z.boolean(),
+        maxAutoFixAttempts: z.number().min(1).max(10),
+        escalationThreshold: z.number().min(1).max(100),
+        loadBalancerEnabled: z.boolean(),
+        loadBalancerType: z.enum(["traefik", "nginx", "haproxy"]),
+        selfLearningEnabled: z.boolean(),
+        logRetentionDays: z.number().min(1).max(365),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.saveAIAgentSettings(input);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_ai_agent_settings",
+          entityType: "settings",
+          details: { enabled: input.enabled },
+        });
+        return { success: true };
+      }),
+
+    // Traefik settings
+    getTraefikSettings: adminProcedure.query(async () => {
+      const settings = await db.getTraefikSettings();
+      return {
+        enabled: settings?.enabled ?? false,
+        apiUrl: settings?.apiUrl ?? "",
+        apiUser: settings?.apiUser ?? "",
+        apiPassword: settings?.apiPassword ? "••••••••" : "",
+        entryPoint: settings?.entryPoint ?? "websecure",
+        dashboardUrl: settings?.dashboardUrl ?? "",
+      };
+    }),
+
+    saveTraefikSettings: adminProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        apiUrl: z.string(),
+        apiUser: z.string(),
+        apiPassword: z.string(),
+        entryPoint: z.string(),
+        dashboardUrl: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.saveTraefikSettings(input);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_traefik_settings",
+          entityType: "settings",
+          details: { enabled: input.enabled, apiUrl: input.apiUrl },
+        });
+        return { success: true };
+      }),
+
+    testTraefikConnection: adminProcedure
+      .input(z.object({
+        apiUrl: z.string(),
+        apiUser: z.string(),
+        apiPassword: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          const auth = Buffer.from(`${input.apiUser}:${input.apiPassword}`).toString('base64');
+          const response = await fetch(`${input.apiUrl}/api/version`, {
+            headers: { 'Authorization': `Basic ${auth}` },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            return { success: true, version: data.Version || 'unknown' };
+          }
+          return { success: false, error: `HTTP ${response.status}` };
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Connection failed' };
+        }
+      }),
+
+    // MinIO S3 settings
+    getMinioSettings: adminProcedure.query(async () => {
+      const settings = await db.getMinioSettings();
+      return {
+        enabled: settings?.enabled ?? false,
+        endpoint: settings?.endpoint ?? "",
+        port: settings?.port ?? 9000,
+        useSSL: settings?.useSSL ?? false,
+        accessKey: settings?.accessKey ?? "",
+        secretKey: settings?.secretKey ? "••••••••" : "",
+        bucket: settings?.bucket ?? "wiki-files",
+        region: settings?.region ?? "us-east-1",
+        publicUrl: settings?.publicUrl ?? "",
+      };
+    }),
+
+    saveMinioSettings: adminProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        endpoint: z.string(),
+        port: z.number().min(1).max(65535),
+        useSSL: z.boolean(),
+        accessKey: z.string(),
+        secretKey: z.string(),
+        bucket: z.string(),
+        region: z.string(),
+        publicUrl: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.saveMinioSettings(input);
+        await db.logActivity({
+          userId: ctx.user.id,
+          action: "update_minio_settings",
+          entityType: "settings",
+          details: { enabled: input.enabled, endpoint: input.endpoint },
+        });
+        return { success: true };
+      }),
+
+    testMinioConnection: adminProcedure
+      .input(z.object({
+        endpoint: z.string(),
+        port: z.number(),
+        useSSL: z.boolean(),
+        accessKey: z.string(),
+        secretKey: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          const protocol = input.useSSL ? 'https' : 'http';
+          const response = await fetch(`${protocol}://${input.endpoint}:${input.port}/minio/health/live`);
+          if (response.ok) {
+            return { success: true, message: 'MinIO is healthy' };
+          }
+          return { success: false, error: `HTTP ${response.status}` };
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Connection failed' };
+        }
+      }),
+
+    // Metrics endpoints
+    getMetrics: adminProcedure
+      .input(z.object({
+        type: z.enum(["response_time", "error_count", "request_count", "memory_usage", "cpu_usage"]),
+        hours: z.number().min(1).max(168).default(24),
+      }))
+      .query(async ({ input }) => {
+        return db.getMetrics(input.type, input.hours);
+      }),
+
+    getDashboardMetrics: adminProcedure.query(async () => {
+      const [responseTime, errorCount, requestCount] = await Promise.all([
+        db.getMetrics('response_time', 24),
+        db.getMetrics('error_count', 24),
+        db.getMetrics('request_count', 24),
+      ]);
+      return { responseTime, errorCount, requestCount };
+    }),
   }),
 
   // ============ ACCESS REQUESTS ============

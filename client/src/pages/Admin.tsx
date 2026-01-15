@@ -70,6 +70,9 @@ import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import { AuthentikSyncPanel } from "@/components/AuthentikSyncPanel";
 import { PagePermissionsPanel } from "@/components/PagePermissionsPanel";
 import { OllamaSettingsPanel } from "@/components/OllamaSettingsPanel";
+import { MetricsDashboard } from "@/components/MetricsDashboard";
+import { TraefikSettingsPanel } from "@/components/TraefikSettingsPanel";
+import { MinioSettingsPanel } from "@/components/MinioSettingsPanel";
 import { useTranslation } from "react-i18next";
 import { useLocalizedError } from "@/hooks/useLocalizedError";
 
@@ -275,6 +278,18 @@ export default function Admin() {
             <TabsTrigger value="ollama">
               <Activity className="h-4 w-4 mr-2" />
               Ollama AI
+            </TabsTrigger>
+            <TabsTrigger value="traefik">
+              <Activity className="h-4 w-4 mr-2" />
+              Traefik
+            </TabsTrigger>
+            <TabsTrigger value="minio">
+              <Activity className="h-4 w-4 mr-2" />
+              MinIO S3
+            </TabsTrigger>
+            <TabsTrigger value="metrics">
+              <Activity className="h-4 w-4 mr-2" />
+              Метрики
             </TabsTrigger>
               </TabsList>
             </div>
@@ -697,6 +712,18 @@ export default function Admin() {
           {/* Ollama Tab */}
           <TabsContent value="ollama" className="mt-0">
             <OllamaSettingsPanel />
+          </TabsContent>
+
+          <TabsContent value="traefik" className="mt-0">
+            <TraefikSettingsPanel />
+          </TabsContent>
+
+          <TabsContent value="minio" className="mt-0">
+            <MinioSettingsPanel />
+          </TabsContent>
+
+          <TabsContent value="metrics" className="mt-0">
+            <MetricsDashboard />
           </TabsContent>
           </div>
         </Tabs>

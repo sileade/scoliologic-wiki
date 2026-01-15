@@ -1449,3 +1449,270 @@ export async function getTagsWithPageCount(): Promise<Array<Tag & { pageCount: n
   
   return result;
 }
+
+
+// ============ AI AGENT SETTINGS ============
+
+export interface AIAgentSettings {
+  enabled: boolean;
+  analysisModel: string;
+  monitoringInterval: number; // seconds
+  autoFixEnabled: boolean;
+  maxAutoFixAttempts: number;
+  escalationThreshold: number;
+  loadBalancerEnabled: boolean;
+  loadBalancerType: 'traefik' | 'nginx' | 'haproxy';
+  selfLearningEnabled: boolean;
+  logRetentionDays: number;
+}
+
+export async function getAIAgentSettings(): Promise<AIAgentSettings | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const settings = await db.select().from(systemSettings)
+    .where(sql`${systemSettings.key} LIKE 'ai_agent_%'`);
+  
+  if (settings.length === 0) return null;
+  
+  const settingsMap: Record<string, string> = {};
+  for (const s of settings) {
+    settingsMap[s.key] = s.value || '';
+  }
+  
+  return {
+    enabled: settingsMap['ai_agent_enabled'] === 'true',
+    analysisModel: settingsMap['ai_agent_analysis_model'] || 'llama3.2',
+    monitoringInterval: parseInt(settingsMap['ai_agent_monitoring_interval'] || '60'),
+    autoFixEnabled: settingsMap['ai_agent_auto_fix_enabled'] === 'true',
+    maxAutoFixAttempts: parseInt(settingsMap['ai_agent_max_auto_fix_attempts'] || '3'),
+    escalationThreshold: parseInt(settingsMap['ai_agent_escalation_threshold'] || '5'),
+    loadBalancerEnabled: settingsMap['ai_agent_load_balancer_enabled'] === 'true',
+    loadBalancerType: (settingsMap['ai_agent_load_balancer_type'] as 'traefik' | 'nginx' | 'haproxy') || 'traefik',
+    selfLearningEnabled: settingsMap['ai_agent_self_learning_enabled'] === 'true',
+    logRetentionDays: parseInt(settingsMap['ai_agent_log_retention_days'] || '30'),
+  };
+}
+
+export async function saveAIAgentSettings(settings: AIAgentSettings): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  const settingsToSave = [
+    { key: 'ai_agent_enabled', value: settings.enabled ? 'true' : 'false', description: 'Enable AI Agent' },
+    { key: 'ai_agent_analysis_model', value: settings.analysisModel, description: 'Model for error analysis' },
+    { key: 'ai_agent_monitoring_interval', value: settings.monitoringInterval.toString(), description: 'Monitoring interval in seconds' },
+    { key: 'ai_agent_auto_fix_enabled', value: settings.autoFixEnabled ? 'true' : 'false', description: 'Enable automatic error fixing' },
+    { key: 'ai_agent_max_auto_fix_attempts', value: settings.maxAutoFixAttempts.toString(), description: 'Max auto-fix attempts' },
+    { key: 'ai_agent_escalation_threshold', value: settings.escalationThreshold.toString(), description: 'Errors before escalation' },
+    { key: 'ai_agent_load_balancer_enabled', value: settings.loadBalancerEnabled ? 'true' : 'false', description: 'Enable load balancer integration' },
+    { key: 'ai_agent_load_balancer_type', value: settings.loadBalancerType, description: 'Load balancer type' },
+    { key: 'ai_agent_self_learning_enabled', value: settings.selfLearningEnabled ? 'true' : 'false', description: 'Enable self-learning' },
+    { key: 'ai_agent_log_retention_days', value: settings.logRetentionDays.toString(), description: 'Log retention in days' },
+  ];
+  
+  for (const setting of settingsToSave) {
+    await db.insert(systemSettings).values(setting)
+      .onDuplicateKeyUpdate({ set: { value: setting.value, description: setting.description } });
+  }
+}
+
+// ============ TRAEFIK SETTINGS ============
+
+export interface TraefikSettings {
+  enabled: boolean;
+  apiUrl: string;
+  apiUser: string;
+  apiPassword: string;
+  entryPoint: string;
+  dashboardUrl: string;
+}
+
+export async function getTraefikSettings(): Promise<TraefikSettings | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const settings = await db.select().from(systemSettings)
+    .where(sql`${systemSettings.key} LIKE 'traefik_%'`);
+  
+  if (settings.length === 0) return null;
+  
+  const settingsMap: Record<string, string> = {};
+  for (const s of settings) {
+    settingsMap[s.key] = s.value || '';
+  }
+  
+  return {
+    enabled: settingsMap['traefik_enabled'] === 'true',
+    apiUrl: settingsMap['traefik_api_url'] || '',
+    apiUser: settingsMap['traefik_api_user'] || '',
+    apiPassword: settingsMap['traefik_api_password'] || '',
+    entryPoint: settingsMap['traefik_entry_point'] || 'websecure',
+    dashboardUrl: settingsMap['traefik_dashboard_url'] || '',
+  };
+}
+
+export async function saveTraefikSettings(settings: TraefikSettings): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  const settingsToSave = [
+    { key: 'traefik_enabled', value: settings.enabled ? 'true' : 'false', description: 'Enable Traefik integration' },
+    { key: 'traefik_api_url', value: settings.apiUrl, description: 'Traefik API URL' },
+    { key: 'traefik_api_user', value: settings.apiUser, description: 'Traefik API username' },
+    { key: 'traefik_api_password', value: settings.apiPassword, description: 'Traefik API password' },
+    { key: 'traefik_entry_point', value: settings.entryPoint, description: 'Traefik entry point' },
+    { key: 'traefik_dashboard_url', value: settings.dashboardUrl, description: 'Traefik dashboard URL' },
+  ];
+  
+  for (const setting of settingsToSave) {
+    await db.insert(systemSettings).values(setting)
+      .onDuplicateKeyUpdate({ set: { value: setting.value, description: setting.description } });
+  }
+}
+
+// ============ MINIO S3 SETTINGS ============
+
+export interface MinioSettings {
+  enabled: boolean;
+  endpoint: string;
+  port: number;
+  useSSL: boolean;
+  accessKey: string;
+  secretKey: string;
+  bucket: string;
+  region: string;
+  publicUrl: string;
+}
+
+export async function getMinioSettings(): Promise<MinioSettings | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const settings = await db.select().from(systemSettings)
+    .where(sql`${systemSettings.key} LIKE 'minio_%'`);
+  
+  if (settings.length === 0) return null;
+  
+  const settingsMap: Record<string, string> = {};
+  for (const s of settings) {
+    settingsMap[s.key] = s.value || '';
+  }
+  
+  return {
+    enabled: settingsMap['minio_enabled'] === 'true',
+    endpoint: settingsMap['minio_endpoint'] || '',
+    port: parseInt(settingsMap['minio_port'] || '9000'),
+    useSSL: settingsMap['minio_use_ssl'] === 'true',
+    accessKey: settingsMap['minio_access_key'] || '',
+    secretKey: settingsMap['minio_secret_key'] || '',
+    bucket: settingsMap['minio_bucket'] || 'wiki-files',
+    region: settingsMap['minio_region'] || 'us-east-1',
+    publicUrl: settingsMap['minio_public_url'] || '',
+  };
+}
+
+export async function saveMinioSettings(settings: MinioSettings): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  const settingsToSave = [
+    { key: 'minio_enabled', value: settings.enabled ? 'true' : 'false', description: 'Enable MinIO S3 storage' },
+    { key: 'minio_endpoint', value: settings.endpoint, description: 'MinIO server endpoint' },
+    { key: 'minio_port', value: settings.port.toString(), description: 'MinIO server port' },
+    { key: 'minio_use_ssl', value: settings.useSSL ? 'true' : 'false', description: 'Use SSL for MinIO' },
+    { key: 'minio_access_key', value: settings.accessKey, description: 'MinIO access key' },
+    { key: 'minio_secret_key', value: settings.secretKey, description: 'MinIO secret key' },
+    { key: 'minio_bucket', value: settings.bucket, description: 'MinIO bucket name' },
+    { key: 'minio_region', value: settings.region, description: 'MinIO region' },
+    { key: 'minio_public_url', value: settings.publicUrl, description: 'Public URL for MinIO files' },
+  ];
+  
+  for (const setting of settingsToSave) {
+    await db.insert(systemSettings).values(setting)
+      .onDuplicateKeyUpdate({ set: { value: setting.value, description: setting.description } });
+  }
+}
+
+// ============ METRICS STORAGE ============
+
+export interface MetricEntry {
+  timestamp: Date;
+  type: 'response_time' | 'error_count' | 'request_count' | 'memory_usage' | 'cpu_usage';
+  value: number;
+  metadata?: Record<string, unknown>;
+}
+
+export async function saveMetric(metric: MetricEntry): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.insert(systemSettings).values({
+    key: `metric_${metric.type}_${Date.now()}`,
+    value: JSON.stringify({
+      timestamp: metric.timestamp.toISOString(),
+      value: metric.value,
+      metadata: metric.metadata,
+    }),
+    description: `Metric: ${metric.type}`,
+  });
+}
+
+export async function getMetrics(type: string, hours: number = 24): Promise<MetricEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const cutoff = new Date();
+  cutoff.setHours(cutoff.getHours() - hours);
+  
+  const settings = await db.select().from(systemSettings)
+    .where(sql`${systemSettings.key} LIKE ${'metric_' + type + '_%'}`);
+  
+  const metrics: MetricEntry[] = [];
+  for (const s of settings) {
+    try {
+      const data = JSON.parse(s.value || '{}');
+      const timestamp = new Date(data.timestamp);
+      if (timestamp >= cutoff) {
+        metrics.push({
+          timestamp,
+          type: type as MetricEntry['type'],
+          value: data.value,
+          metadata: data.metadata,
+        });
+      }
+    } catch (e) {
+      // Skip invalid entries
+    }
+  }
+  
+  return metrics.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+}
+
+export async function cleanupOldMetrics(daysOld: number = 7): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysOld);
+  
+  // Get all metric keys
+  const settings = await db.select().from(systemSettings)
+    .where(sql`${systemSettings.key} LIKE 'metric_%'`);
+  
+  let deleted = 0;
+  for (const s of settings) {
+    try {
+      const data = JSON.parse(s.value || '{}');
+      const timestamp = new Date(data.timestamp);
+      if (timestamp < cutoff) {
+        await db.delete(systemSettings).where(eq(systemSettings.key, s.key));
+        deleted++;
+      }
+    } catch (e) {
+      // Skip invalid entries
+    }
+  }
+  
+  return deleted;
+}
