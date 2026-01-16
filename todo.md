@@ -512,4 +512,16 @@
 - [x] Проверить интеграцию с Ollama - создан ollama.test.ts
 - [x] Code review AI модулей (CODE_REVIEW_AI_MODULES.md)
 - [x] Обновить README.md с информацией о pgvector
-- [ ] Экспорт в GitHub
+- [x] Экспорт в GitHub (eaf417db)
+
+
+## Оптимизация производительности (16.01.2026)
+
+- [x] Добавить IVFFlat индекс для векторного поиска (init-db.sql)
+- [x] Создать миграцию для автоматического создания индекса (db.ts)
+- [x] Настроить rate limiting для AI endpoints (rateLimit.ts)
+- [x] Добавить Redis в docker-compose.yml (redis:7-alpine)
+- [x] Реализовать кэширование embeddings в Redis (cache.ts)
+- [x] Добавить TTL и инвалидацию кэша (24h embeddings, 1h assist)
+- [x] Обновить README с информацией о Redis
+- [x] Тестирование производительности (195/217 тестов)

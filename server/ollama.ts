@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import { getCachedEmbedding, cacheEmbedding, getCachedAssistResult, cacheAssistResult } from './cache';
+
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || "nomic-embed-text";
 const LLM_MODEL = process.env.LLM_MODEL || "mistral";
@@ -13,14 +15,26 @@ const ollamaClient = axios.create({
 /**
  * Generate embeddings for text using Ollama
  * Used for semantic search and similarity matching
+ * Results are cached in Redis for 24 hours
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+  // Check cache first
+  const cached = await getCachedEmbedding(text);
+  if (cached) {
+    return cached;
+  }
+  
   try {
     const response = await ollamaClient.post("/api/embeddings", {
       model: EMBEDDING_MODEL,
       prompt: text,
     });
-    return response.data.embedding;
+    const embedding = response.data.embedding;
+    
+    // Cache the result
+    await cacheEmbedding(text, embedding);
+    
+    return embedding;
   } catch (error) {
     console.error("[Ollama] Failed to generate embedding:", error);
     throw new Error("Failed to generate embedding");
@@ -59,13 +73,23 @@ export async function generateText(
 
 /**
  * Improve text formatting and structure
+ * Results are cached in Redis for 1 hour
  */
 export async function improveText(text: string): Promise<string> {
+  // Check cache first
+  const cached = await getCachedAssistResult(text, 'improve');
+  if (cached) return cached;
+  
   const prompt = `Please improve the following text by fixing grammar, spelling, and making it more professional and clear. Only return the improved text without any explanations:
 
 ${text}`;
 
-  return generateText(prompt, { temperature: 0.3, maxTokens: 1024 });
+  const result = await generateText(prompt, { temperature: 0.3, maxTokens: 1024 });
+  
+  // Cache the result
+  await cacheAssistResult(text, 'improve', result);
+  
+  return result;
 }
 
 /**
@@ -82,25 +106,42 @@ Please write in a professional, clear, and well-structured manner. Include an in
 
 /**
  * Summarize text
+ * Results are cached in Redis for 1 hour
  */
 export async function summarizeText(text: string, maxLength?: number): Promise<string> {
+  const cacheKey = maxLength ? `summarize_${maxLength}` : 'summarize';
+  const cached = await getCachedAssistResult(text, cacheKey);
+  if (cached) return cached;
+  
   const lengthHint = maxLength ? ` Keep it to approximately ${maxLength} words.` : "";
   const prompt = `Please summarize the following text concisely.${lengthHint}
 
 ${text}`;
 
-  return generateText(prompt, { temperature: 0.3, maxTokens: 512 });
+  const result = await generateText(prompt, { temperature: 0.3, maxTokens: 512 });
+  
+  await cacheAssistResult(text, cacheKey, result);
+  
+  return result;
 }
 
 /**
  * Expand text with more details
+ * Results are cached in Redis for 1 hour
  */
 export async function expandText(text: string): Promise<string> {
+  const cached = await getCachedAssistResult(text, 'expand');
+  if (cached) return cached;
+  
   const prompt = `Please expand the following text with more details, examples, and explanations while maintaining the original meaning:
 
 ${text}`;
 
-  return generateText(prompt, { temperature: 0.6, maxTokens: 1024 });
+  const result = await generateText(prompt, { temperature: 0.6, maxTokens: 1024 });
+  
+  await cacheAssistResult(text, 'expand', result);
+  
+  return result;
 }
 
 /**

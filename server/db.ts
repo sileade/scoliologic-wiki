@@ -31,12 +31,28 @@ export async function getDb() {
     try {
       _client = postgres(process.env.DATABASE_URL);
       _db = drizzle(_client);
+      // Create indexes after connection
+      await createIndexesIfNeeded();
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
   return _db;
+}
+
+// Create IVFFlat and other performance indexes
+async function createIndexesIfNeeded() {
+  if (!_client) return;
+  
+  try {
+    // Call the PostgreSQL function to create IVFFlat index
+    await _client`SELECT create_embedding_index() WHERE EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'create_embedding_index')`;
+    await _client`SELECT create_search_indexes() WHERE EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'create_search_indexes')`;
+  } catch (error) {
+    // Functions may not exist yet, ignore
+    console.debug("[Database] Index creation skipped (functions not available)");
+  }
 }
 
 // ============ USER FUNCTIONS ============

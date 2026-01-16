@@ -73,6 +73,24 @@ services:
       - wiki-network
     restart: unless-stopped
 
+  # Redis Cache for embeddings and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: wiki-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
   # Wiki Application
   app:
     build:
@@ -106,12 +124,16 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       LLM_MODEL: ${LLM_MODEL:-mistral}
+      # Redis Cache
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
       ollama:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "3000:3000"
@@ -158,6 +180,8 @@ volumes:
   ollama_data:
     driver: local
   traefik_data:
+    driver: local
+  redis_data:
     driver: local
 
 networks:

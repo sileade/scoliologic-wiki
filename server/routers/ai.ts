@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import * as db from "../db";
+import { aiRateLimiter, embeddingRateLimiter, searchRateLimiter } from "../rateLimit";
 import {
   generateEmbedding,
   semanticSearch,
@@ -40,7 +41,10 @@ export const aiRouter = router({
   // AI-powered semantic search
   search: protectedProcedure
     .input(z.object({ query: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Rate limiting: 60 requests per minute
+      searchRateLimiter(ctx.user?.id || 'anonymous', 'ai.search');
+      
       const allPages = await db.getAllPages();
       
       // Get all embeddings
@@ -113,7 +117,10 @@ export const aiRouter = router({
   // Generate embeddings for a page (parallel processing)
   generateEmbeddings: protectedProcedure
     .input(z.object({ pageId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Rate limiting: 10 requests per minute (resource intensive)
+      embeddingRateLimiter(ctx.user?.id || 'anonymous', 'ai.generateEmbeddings');
+      
       const page = await db.getPageById(input.pageId);
       if (!page) {
         throw new Error("Page not found");
@@ -149,7 +156,9 @@ export const aiRouter = router({
         "keywords",
       ]),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Rate limiting: 30 requests per minute
+      aiRateLimiter(ctx.user?.id || 'anonymous', 'ai.assist');
       switch (input.action) {
         case "improve":
           return { result: await improveText(input.text) };

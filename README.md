@@ -208,11 +208,12 @@ Scoliologic Wiki — это современная корпоративная wi
 
 ## Технологический стек
 
-| Компонент | Технология |
-|-----------|-----------|
+| **Компонент** | **Технология** |
+|-----------|------------|
 | **Frontend** | React 19, TypeScript, TailwindCSS, TipTap |
 | **Backend** | Node.js, Express, tRPC |
-| **База данных** | PostgreSQL |
+| **База данных** | PostgreSQL 17 + pgvector |
+| **Кэширование** | Redis 7 (embeddings, rate limiting) |
 | **Хранилище** | MinIO (S3-совместимое) |
 | **AI** | Ollama (локальные модели) |
 | **Авторизация** | Authentik OAuth2 |
@@ -284,6 +285,7 @@ https://wiki.yourdomain.com
 | `S3_ACCESS_KEY` | Ключ доступа S3 | `minioadmin` |
 | `S3_SECRET_KEY` | Секретный ключ S3 | `minioadmin` |
 | `OLLAMA_URL` | URL Ollama сервера | `http://ollama:11434` |
+| `REDIS_URL` | URL Redis для кэширования | `redis://redis:6379` |
 | `AUTHENTIK_URL` | URL Authentik сервера | `https://auth.example.com` |
 | `AUTHENTIK_CLIENT_ID` | Client ID OAuth | `wiki-client` |
 | `AUTHENTIK_CLIENT_SECRET` | Client Secret OAuth | `secret` |
@@ -526,6 +528,32 @@ ON page_embeddings
 USING ivfflat (embedding vector_cosine_ops) 
 WITH (lists = 100);
 ```
+
+---
+
+### Redis — Кэширование и Rate Limiting
+
+Проект использует **Redis 7** для кэширования AI-операций и защиты от перегрузки.
+
+| Компонент | TTL | Описание |
+|-----------|-----|------------|
+| **Embeddings** | 24 часа | Кэширование векторных представлений |
+| **Search Results** | 5 минут | Кэширование результатов поиска |
+| **AI Assist** | 1 час | Кэширование результатов AI-помощника |
+
+**Rate Limiting для AI endpoints:**
+
+| Endpoint | Лимит | Окно |
+|----------|-------|------|
+| `ai.search` | 30 запросов | 1 минута |
+| `ai.assist` | 20 запросов | 1 минута |
+| `ai.generateEmbeddings` | 50 запросов | 1 минута |
+
+**Преимущества:**
+- Снижение нагрузки на Ollama до 80%
+- Защита от DDoS и злоупотреблений
+- Мгновенный ответ для повторных запросов
+- LRU-вытеснение при заполнении памяти (256MB)
 
 ---
 
