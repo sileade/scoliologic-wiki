@@ -263,40 +263,75 @@ export function FolderImport({
     });
   }, []);
 
-  // Analyze files with AI
+  // Analyze files with AI (parallel processing with concurrency limit)
   const analyzeWithAI = useCallback(async () => {
     setIsAnalyzing(true);
+    setProgress(0);
     
-    const analyzeEntry = async (entry: FileEntry): Promise<FileEntry> => {
-      if (entry.type === "file" && entry.content && entry.selected) {
-        try {
-          const result = await analyzeFile.mutateAsync({
-            content: entry.content,
-            filename: entry.name,
-            mimeType: entry.mimeType || "text/plain",
-          });
-          return {
-            ...entry,
-            suggestedTitle: result.title,
-            suggestedTags: result.suggestedTags,
-            content: result.markdownContent,
-          };
-        } catch {
-          return entry;
+    // Collect all files to analyze
+    const filesToAnalyze: { entry: FileEntry; path: string[] }[] = [];
+    
+    const collectFiles = (entries: FileEntry[], path: string[] = []) => {
+      for (const entry of entries) {
+        if (entry.type === "file" && entry.content && entry.selected) {
+          filesToAnalyze.push({ entry, path });
+        }
+        if (entry.children) {
+          collectFiles(entry.children, [...path, entry.path]);
         }
       }
-      if (entry.children) {
-        const analyzedChildren = await Promise.all(
-          entry.children.map(child => analyzeEntry(child))
-        );
-        return { ...entry, children: analyzedChildren };
-      }
-      return entry;
     };
-
-    const analyzed = await Promise.all(files.map(f => analyzeEntry(f)));
-    setFiles(analyzed);
+    collectFiles(files);
+    
+    const totalFiles = filesToAnalyze.length;
+    let processedCount = 0;
+    
+    // Process files in parallel with concurrency limit of 5
+    const CONCURRENCY_LIMIT = 5;
+    const analyzedMap = new Map<string, FileEntry>();
+    
+    const analyzeOne = async (item: { entry: FileEntry; path: string[] }): Promise<void> => {
+      try {
+        const result = await analyzeFile.mutateAsync({
+          content: item.entry.content!,
+          filename: item.entry.name,
+          mimeType: item.entry.mimeType || "text/plain",
+        });
+        analyzedMap.set(item.entry.path, {
+          ...item.entry,
+          suggestedTitle: result.title,
+          suggestedTags: result.suggestedTags,
+          content: result.markdownContent,
+        });
+      } catch {
+        analyzedMap.set(item.entry.path, item.entry);
+      }
+      processedCount++;
+      setProgress((processedCount / totalFiles) * 100);
+    };
+    
+    // Process in batches with concurrency limit
+    for (let i = 0; i < filesToAnalyze.length; i += CONCURRENCY_LIMIT) {
+      const batch = filesToAnalyze.slice(i, i + CONCURRENCY_LIMIT);
+      await Promise.all(batch.map(analyzeOne));
+    }
+    
+    // Rebuild file tree with analyzed results
+    const updateEntries = (entries: FileEntry[]): FileEntry[] => {
+      return entries.map(entry => {
+        if (entry.type === "file" && analyzedMap.has(entry.path)) {
+          return analyzedMap.get(entry.path)!;
+        }
+        if (entry.children) {
+          return { ...entry, children: updateEntries(entry.children) };
+        }
+        return entry;
+      });
+    };
+    
+    setFiles(updateEntries(files));
     setIsAnalyzing(false);
+    setProgress(0);
     toast.success(t("folderImport.analysisComplete", "AI analysis complete"));
   }, [files, analyzeFile, t]);
 
