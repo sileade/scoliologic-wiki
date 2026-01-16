@@ -4,7 +4,7 @@
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- For full-text search
-CREATE EXTENSION IF NOT EXISTS "vector";   -- For embeddings (if pgvector is installed)
+CREATE EXTENSION IF NOT EXISTS "vector";   -- For AI vector embeddings (pgvector)
 
 -- Create schema for wiki
 CREATE SCHEMA IF NOT EXISTS wiki;

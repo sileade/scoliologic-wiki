@@ -501,5 +501,15 @@
 - [x] Создать Dockerfile для production (уже существует)
 - [x] Тестирование миграций (168/190 тестов прошли, остальные требуют БД)
 - [x] Обновить README.md (добавлен раздел об импорте папок)
-- [ ] Экспорт в GitHub
+- [x] Экспорт в GitHub (ec345bf)
 - [x] Code review (CODE_REVIEW_POSTGRES_MIGRATION.md)
+
+
+## pgvector и AI тестирование (16.01.2026)
+- [x] Установить pgvector расширение для PostgreSQL (pgvector/pgvector:pg17)
+- [x] Обновить docker-compose.yml с pgvector образом
+- [x] Протестировать AI роутеры (search, assist, embedding) - 195/217 тестов
+- [x] Проверить интеграцию с Ollama - создан ollama.test.ts
+- [x] Code review AI модулей (CODE_REVIEW_AI_MODULES.md)
+- [x] Обновить README.md с информацией о pgvector
+- [ ] Экспорт в GitHub
