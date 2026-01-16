@@ -575,3 +575,11 @@
 - [x] Обновить README с инструкциями по установке (DEPLOYMENT.md)
 - [x] Добавить GITOPS.md с описанием Pull-агента
 - [x] Добавить примеры конфигурации для разных сценариев (env.example.txt)
+
+
+## Ручное управление GitOps Pull Agent (16.01.2026)
+- [x] Добавить API endpoint для ручного pull (POST /pull)
+- [x] Добавить API endpoint для ручного deploy (POST /deploy, /rebuild)
+- [x] Добавить кнопки в веб-интерфейс (Pull, Pull & Deploy, Restart, Rebuild)
+- [x] Добавить индикатор выполнения операций
+- [x] Обновить документацию GITOPS.md

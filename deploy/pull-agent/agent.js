@@ -566,17 +566,229 @@ app.get('/history', (req, res) => {
   res.json(state.history.slice(0, limit));
 });
 
-// Manual trigger endpoint
+// Manual trigger endpoint (check for updates and deploy if available)
 app.post('/trigger', async (req, res) => {
   if (state.isRunning) {
     return res.status(409).json({ error: 'Update already in progress' });
   }
   
   logger.info('Manual update triggered');
-  res.json({ message: 'Update triggered' });
+  res.json({ message: 'Update triggered', action: 'check_and_deploy' });
   
   // Run update in background
   checkForUpdates();
+});
+
+// Manual pull only endpoint (git pull without deploy)
+app.post('/pull', async (req, res) => {
+  if (state.isRunning) {
+    return res.status(409).json({ error: 'Operation already in progress' });
+  }
+  
+  state.isRunning = true;
+  state.status = 'checking';
+  logger.info('Manual pull triggered');
+  
+  try {
+    const git = getGit();
+    
+    // Fetch and pull latest changes
+    await git.fetch(['origin', config.branch]);
+    const pullResult = await git.pull('origin', config.branch);
+    
+    // Get current commit
+    const currentCommit = await git.revparse(['HEAD']);
+    state.lastCommit = currentCommit.trim();
+    state.lastCheck = new Date().toISOString();
+    state.status = 'idle';
+    
+    logger.info(`Pull completed: ${pullResult.summary.changes} changes`);
+    res.json({ 
+      message: 'Pull completed', 
+      action: 'pull_only',
+      commit: currentCommit.trim().slice(0, 8),
+      changes: pullResult.summary
+    });
+  } catch (error) {
+    state.status = 'error';
+    state.error = error.message;
+    logger.error('Pull failed:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    state.isRunning = false;
+    await saveState();
+  }
+});
+
+// Manual deploy only endpoint (rebuild and restart without pull)
+app.post('/deploy', async (req, res) => {
+  if (state.isRunning) {
+    return res.status(409).json({ error: 'Operation already in progress' });
+  }
+  
+  const { rebuild = false } = req.body || {};
+  
+  state.isRunning = true;
+  state.status = 'updating';
+  logger.info(`Manual deploy triggered (rebuild: ${rebuild})`);
+  
+  const startTime = Date.now();
+  
+  try {
+    const git = getGit();
+    const currentCommit = await git.revparse(['HEAD']);
+    
+    // Create backup before deploy
+    const backupDir = await createBackup(currentCommit.trim());
+    
+    if (rebuild) {
+      logger.info('Rebuilding application...');
+      await rebuildApp();
+    } else {
+      logger.info('Restarting application...');
+      await restartApp();
+    }
+    
+    // Run migrations
+    if (config.databaseUrl) {
+      logger.info('Running database migrations...');
+      await runMigrations();
+    }
+    
+    // Wait for healthy
+    await waitForHealthy();
+    
+    const duration = Date.now() - startTime;
+    state.lastUpdate = new Date().toISOString();
+    state.status = 'idle';
+    state.error = null;
+    state.stats.totalUpdates++;
+    
+    // Add to history
+    state.history.unshift({
+      timestamp: new Date().toISOString(),
+      oldCommit: currentCommit.trim().slice(0, 8),
+      newCommit: currentCommit.trim().slice(0, 8),
+      message: rebuild ? 'Manual rebuild' : 'Manual restart',
+      author: 'Manual',
+      duration,
+      success: true,
+      manual: true
+    });
+    
+    if (state.history.length > 50) {
+      state.history = state.history.slice(0, 50);
+    }
+    
+    await notify(
+      `🛠️ Manual deployment completed!\n` +
+      `Action: ${rebuild ? 'Rebuild' : 'Restart'}\n` +
+      `Commit: ${currentCommit.trim().slice(0, 8)}\n` +
+      `Duration: ${(duration / 1000).toFixed(1)}s`
+    );
+    
+    logger.info(`Deploy completed in ${duration}ms`);
+    res.json({ 
+      message: 'Deploy completed', 
+      action: rebuild ? 'rebuild' : 'restart',
+      commit: currentCommit.trim().slice(0, 8),
+      duration
+    });
+    
+  } catch (error) {
+    state.status = 'error';
+    state.error = error.message;
+    state.stats.totalErrors++;
+    
+    state.history.unshift({
+      timestamp: new Date().toISOString(),
+      error: error.message,
+      success: false,
+      manual: true
+    });
+    
+    logger.error('Deploy failed:', error);
+    await notify(`❌ Manual deployment failed: ${error.message}`, true);
+    res.status(500).json({ error: error.message });
+  } finally {
+    state.isRunning = false;
+    await saveState();
+  }
+});
+
+// Force rebuild endpoint
+app.post('/rebuild', async (req, res) => {
+  // Redirect to deploy with rebuild=true
+  req.body = { rebuild: true };
+  
+  if (state.isRunning) {
+    return res.status(409).json({ error: 'Operation already in progress' });
+  }
+  
+  state.isRunning = true;
+  state.status = 'updating';
+  logger.info('Manual rebuild triggered');
+  
+  const startTime = Date.now();
+  
+  try {
+    const git = getGit();
+    const currentCommit = await git.revparse(['HEAD']);
+    
+    // Create backup before rebuild
+    await createBackup(currentCommit.trim());
+    
+    // Full rebuild
+    await rebuildApp();
+    
+    // Run migrations
+    if (config.databaseUrl) {
+      await runMigrations();
+    }
+    
+    // Wait for healthy
+    await waitForHealthy();
+    
+    const duration = Date.now() - startTime;
+    state.lastUpdate = new Date().toISOString();
+    state.status = 'idle';
+    state.error = null;
+    state.stats.totalUpdates++;
+    
+    state.history.unshift({
+      timestamp: new Date().toISOString(),
+      oldCommit: currentCommit.trim().slice(0, 8),
+      newCommit: currentCommit.trim().slice(0, 8),
+      message: 'Manual full rebuild',
+      author: 'Manual',
+      duration,
+      success: true,
+      manual: true
+    });
+    
+    await notify(
+      `🛠️ Manual rebuild completed!\n` +
+      `Commit: ${currentCommit.trim().slice(0, 8)}\n` +
+      `Duration: ${(duration / 1000).toFixed(1)}s`
+    );
+    
+    res.json({ 
+      message: 'Rebuild completed', 
+      commit: currentCommit.trim().slice(0, 8),
+      duration
+    });
+    
+  } catch (error) {
+    state.status = 'error';
+    state.error = error.message;
+    state.stats.totalErrors++;
+    logger.error('Rebuild failed:', error);
+    await notify(`❌ Manual rebuild failed: ${error.message}`, true);
+    res.status(500).json({ error: error.message });
+  } finally {
+    state.isRunning = false;
+    await saveState();
+  }
 });
 
 // Manual rollback endpoint
@@ -665,9 +877,20 @@ app.get('/', (req, res) => {
     .history-commit { font-family: monospace; color: #60a5fa; }
     .history-success { color: #22c55e; }
     .history-error { color: #ef4444; }
-    .btn { background: #3b82f6; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.375rem; cursor: pointer; font-size: 1rem; }
-    .btn:hover { background: #2563eb; }
-    .btn:disabled { background: #475569; cursor: not-allowed; }
+    .btn { background: #3b82f6; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.375rem; cursor: pointer; font-size: 1rem; margin-right: 0.5rem; margin-bottom: 0.5rem; transition: all 0.2s; }
+    .btn:hover { background: #2563eb; transform: translateY(-1px); }
+    .btn:disabled { background: #475569; cursor: not-allowed; transform: none; }
+    .btn-primary { background: #22c55e; }
+    .btn-primary:hover { background: #16a34a; }
+    .btn-secondary { background: #6366f1; }
+    .btn-secondary:hover { background: #4f46e5; }
+    .btn-warning { background: #f59e0b; }
+    .btn-warning:hover { background: #d97706; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .action-status { font-size: 0.875rem; color: #94a3b8; min-height: 1.5rem; }
+    .action-status.success { color: #22c55e; }
+    .action-status.error { color: #ef4444; }
+    .action-status.loading { color: #eab308; }
     .info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.875rem; }
     .info-label { color: #94a3b8; }
     .info-value { color: #e2e8f0; font-family: monospace; }
@@ -727,7 +950,13 @@ app.get('/', (req, res) => {
     
     <div class="card">
       <h2>Действия</h2>
-      <button class="btn" id="trigger-btn" onclick="triggerUpdate()">Запустить обновление</button>
+      <div class="actions">
+        <button class="btn" id="pull-btn" onclick="manualPull()">📥 Pull</button>
+        <button class="btn btn-primary" id="trigger-btn" onclick="triggerUpdate()">🚀 Pull & Deploy</button>
+        <button class="btn btn-secondary" id="deploy-btn" onclick="manualDeploy()">🔄 Restart</button>
+        <button class="btn btn-warning" id="rebuild-btn" onclick="manualRebuild()">🛠️ Rebuild</button>
+      </div>
+      <div class="action-status" id="action-status"></div>
     </div>
     
     <div class="card">
@@ -772,7 +1001,20 @@ app.get('/', (req, res) => {
           '<div class="info-label">' + label + '</div><div class="info-value">' + value + '</div>'
         ).join('');
         
-        document.getElementById('trigger-btn').disabled = data.status !== 'idle';
+        const isIdle = data.status === 'idle';
+        ['pull-btn', 'trigger-btn', 'deploy-btn', 'rebuild-btn'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.disabled = !isIdle;
+        });
+        
+        // Clear action status when idle
+        if (isIdle) {
+          const statusEl = document.getElementById('action-status');
+          if (statusEl && statusEl.classList.contains('loading')) {
+            statusEl.textContent = '';
+            statusEl.className = 'action-status';
+          }
+        }
       } catch (e) {
         console.error('Failed to fetch status:', e);
       }
@@ -804,13 +1046,88 @@ app.get('/', (req, res) => {
       }
     }
     
+    function setActionStatus(message, type = '') {
+      const el = document.getElementById('action-status');
+      el.textContent = message;
+      el.className = 'action-status ' + type;
+    }
+    
+    function disableAllButtons(disabled) {
+      ['pull-btn', 'trigger-btn', 'deploy-btn', 'rebuild-btn'].forEach(id => {
+        document.getElementById(id).disabled = disabled;
+      });
+    }
+    
+    async function manualPull() {
+      try {
+        disableAllButtons(true);
+        setActionStatus('📥 Выполняется git pull...', 'loading');
+        const res = await fetch('/pull', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          setActionStatus('✅ Pull завершён: ' + data.commit, 'success');
+        } else {
+          setActionStatus('❌ Ошибка: ' + data.error, 'error');
+        }
+      } catch (e) {
+        setActionStatus('❌ Ошибка соединения', 'error');
+      } finally {
+        setTimeout(() => { disableAllButtons(false); fetchStatus(); }, 2000);
+      }
+    }
+    
     async function triggerUpdate() {
       try {
-        document.getElementById('trigger-btn').disabled = true;
+        disableAllButtons(true);
+        setActionStatus('🚀 Проверка обновлений и деплой...', 'loading');
         await fetch('/trigger', { method: 'POST' });
+        setActionStatus('🚀 Обновление запущено, ожидайте...', 'loading');
         setTimeout(fetchStatus, 1000);
       } catch (e) {
-        console.error('Failed to trigger update:', e);
+        setActionStatus('❌ Ошибка соединения', 'error');
+        disableAllButtons(false);
+      }
+    }
+    
+    async function manualDeploy() {
+      try {
+        disableAllButtons(true);
+        setActionStatus('🔄 Перезапуск приложения...', 'loading');
+        const res = await fetch('/deploy', { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rebuild: false })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setActionStatus('✅ Перезапуск завершён за ' + (data.duration/1000).toFixed(1) + 'с', 'success');
+        } else {
+          setActionStatus('❌ Ошибка: ' + data.error, 'error');
+        }
+      } catch (e) {
+        setActionStatus('❌ Ошибка соединения', 'error');
+      } finally {
+        setTimeout(() => { disableAllButtons(false); fetchStatus(); fetchHistory(); }, 2000);
+      }
+    }
+    
+    async function manualRebuild() {
+      if (!confirm('Полная пересборка может занять несколько минут. Продолжить?')) return;
+      
+      try {
+        disableAllButtons(true);
+        setActionStatus('🛠️ Полная пересборка приложения...', 'loading');
+        const res = await fetch('/rebuild', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          setActionStatus('✅ Пересборка завершена за ' + (data.duration/1000).toFixed(1) + 'с', 'success');
+        } else {
+          setActionStatus('❌ Ошибка: ' + data.error, 'error');
+        }
+      } catch (e) {
+        setActionStatus('❌ Ошибка соединения', 'error');
+      } finally {
+        setTimeout(() => { disableAllButtons(false); fetchStatus(); fetchHistory(); }, 2000);
       }
     }
     
