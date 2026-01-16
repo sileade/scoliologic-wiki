@@ -491,3 +491,15 @@
 - [x] Добавить ограничение concurrency для параллельной обработки (limit: 5)
 - [x] Экспортировать код в GitHub репозиторий
 - [x] Обновить запущенную production версию (создан скрипт update-production.sh)
+
+
+## Миграция на PostgreSQL (16.01.2026)
+- [x] Обновить схему Drizzle для PostgreSQL
+- [x] Заменить mysql2 на postgres драйвер
+- [x] Обновить drizzle.config.ts для PostgreSQL
+- [x] Обновить docker-compose.yml с PostgreSQL (postgres:17-alpine)
+- [x] Создать Dockerfile для production (уже существует)
+- [x] Тестирование миграций (168/190 тестов прошли, остальные требуют БД)
+- [x] Обновить README.md (добавлен раздел об импорте папок)
+- [ ] Экспорт в GitHub
+- [x] Code review (CODE_REVIEW_POSTGRES_MIGRATION.md)

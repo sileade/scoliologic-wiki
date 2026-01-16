@@ -1,19 +1,48 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json, index, boolean, decimal } from "drizzle-orm/mysql-core";
+import { integer, pgEnum, pgTable, text, timestamp, varchar, json, index, boolean, decimal, serial } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+
+// Enums for PostgreSQL
+export const userRoleEnum = pgEnum("user_role", ["user", "admin", "guest"]);
+export const groupRoleEnum = pgEnum("group_role", ["member", "editor", "admin"]);
+export const permissionEnum = pgEnum("permission", ["read", "edit", "admin"]);
+export const requestStatusEnum = pgEnum("request_status", ["pending", "approved", "rejected"]);
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "page_updated",
+  "page_commented",
+  "page_shared",
+  "mention",
+  "access_granted",
+  "access_requested",
+  "system"
+]);
+export const metricTypeEnum = pgEnum("metric_type", [
+  "errors_4xx_rate",
+  "errors_5xx_rate",
+  "latency_avg",
+  "latency_p95",
+  "requests_per_second",
+  "error_total_rate"
+]);
+export const operatorEnum = pgEnum("operator", ["gt", "lt", "gte", "lte", "eq"]);
+export const alertStatusEnum = pgEnum("alert_status", ["triggered", "resolved", "acknowledged"]);
+export const configFormatEnum = pgEnum("config_format", ["yaml", "toml"]);
+export const providerEnum = pgEnum("provider", ["telegram", "slack", "discord", "email"]);
+export const providerExtEnum = pgEnum("provider_ext", ["telegram", "slack", "discord", "email", "webhook"]);
+export const severityEnum = pgEnum("severity", ["info", "warning", "error", "critical"]);
 
 /**
  * Core user table backing auth flow.
  */
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   avatar: text("avatar"),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "guest"]).default("user").notNull(),
+  role: userRoleEnum("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
@@ -23,14 +52,14 @@ export type InsertUser = typeof users.$inferInsert;
 /**
  * User groups for access control
  */
-export const groups = mysqlTable("groups", {
-  id: int("id").autoincrement().primaryKey(),
+export const groups = pgTable("groups", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   color: varchar("color", { length: 7 }).default("#3B82F6"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  createdById: int("createdById"),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  createdById: integer("createdById"),
 });
 
 export type Group = typeof groups.$inferSelect;
@@ -39,11 +68,11 @@ export type InsertGroup = typeof groups.$inferInsert;
 /**
  * User-to-group membership with role
  */
-export const userGroups = mysqlTable("user_groups", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  groupId: int("groupId").notNull(),
-  role: mysqlEnum("role", ["member", "editor", "admin"]).default("member").notNull(),
+export const userGroups = pgTable("user_groups", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  groupId: integer("groupId").notNull(),
+  role: groupRoleEnum("role").default("member").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("user_group_idx").on(table.userId, table.groupId),
@@ -55,22 +84,22 @@ export type InsertUserGroup = typeof userGroups.$inferInsert;
 /**
  * Wiki pages with hierarchical structure
  */
-export const pages = mysqlTable("pages", {
-  id: int("id").autoincrement().primaryKey(),
+export const pages = pgTable("pages", {
+  id: serial("id").primaryKey(),
   title: varchar("title", { length: 500 }).notNull(),
   slug: varchar("slug", { length: 500 }).notNull(),
-  content: text("content"),
+  content: text("content").default(""),
   contentJson: json("contentJson"),
   icon: varchar("icon", { length: 100 }),
   coverImage: text("coverImage"),
-  parentId: int("parentId"),
-  order: int("order").default(0),
+  parentId: integer("parentId"),
+  order: integer("order").default(0),
   isPublic: boolean("isPublic").default(false).notNull(),
   isArchived: boolean("isArchived").default(false).notNull(),
-  createdById: int("createdById").notNull(),
-  lastEditedById: int("lastEditedById"),
+  createdById: integer("createdById").notNull(),
+  lastEditedById: integer("lastEditedById"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, (table) => [
   index("parent_idx").on(table.parentId),
   index("slug_idx").on(table.slug),
@@ -83,15 +112,15 @@ export type InsertPage = typeof pages.$inferInsert;
 /**
  * Page version history for rollback
  */
-export const pageVersions = mysqlTable("page_versions", {
-  id: int("id").autoincrement().primaryKey(),
-  pageId: int("pageId").notNull(),
+export const pageVersions = pgTable("page_versions", {
+  id: serial("id").primaryKey(),
+  pageId: integer("pageId").notNull(),
   title: varchar("title", { length: 500 }).notNull(),
   content: text("content"),
   contentJson: json("contentJson"),
-  version: int("version").notNull(),
+  version: integer("version").notNull(),
   changeDescription: text("changeDescription"),
-  createdById: int("createdById").notNull(),
+  createdById: integer("createdById").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("page_version_idx").on(table.pageId, table.version),
@@ -103,12 +132,12 @@ export type InsertPageVersion = typeof pageVersions.$inferInsert;
 /**
  * Page-level access permissions
  */
-export const pagePermissions = mysqlTable("page_permissions", {
-  id: int("id").autoincrement().primaryKey(),
-  pageId: int("pageId").notNull(),
-  groupId: int("groupId"),
-  userId: int("userId"),
-  permission: mysqlEnum("permission", ["read", "edit", "admin"]).default("read").notNull(),
+export const pagePermissions = pgTable("page_permissions", {
+  id: serial("id").primaryKey(),
+  pageId: integer("pageId").notNull(),
+  groupId: integer("groupId"),
+  userId: integer("userId"),
+  permission: permissionEnum("permission").default("read").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("page_perm_idx").on(table.pageId),
@@ -122,14 +151,14 @@ export type InsertPagePermission = typeof pagePermissions.$inferInsert;
 /**
  * Vector embeddings for AI search
  */
-export const pageEmbeddings = mysqlTable("page_embeddings", {
-  id: int("id").autoincrement().primaryKey(),
-  pageId: int("pageId").notNull(),
-  chunkIndex: int("chunkIndex").default(0).notNull(),
+export const pageEmbeddings = pgTable("page_embeddings", {
+  id: serial("id").primaryKey(),
+  pageId: integer("pageId").notNull(),
+  chunkIndex: integer("chunkIndex").default(0).notNull(),
   chunkText: text("chunkText").notNull(),
   embedding: json("embedding"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, (table) => [
   index("embedding_page_idx").on(table.pageId),
 ]);
@@ -140,16 +169,16 @@ export type InsertPageEmbedding = typeof pageEmbeddings.$inferInsert;
 /**
  * Media files uploaded to S3
  */
-export const mediaFiles = mysqlTable("media_files", {
-  id: int("id").autoincrement().primaryKey(),
+export const mediaFiles = pgTable("media_files", {
+  id: serial("id").primaryKey(),
   filename: varchar("filename", { length: 500 }).notNull(),
   originalName: varchar("originalName", { length: 500 }).notNull(),
   mimeType: varchar("mimeType", { length: 100 }).notNull(),
-  size: int("size").notNull(),
+  size: integer("size").notNull(),
   url: text("url").notNull(),
   fileKey: varchar("fileKey", { length: 500 }).notNull(),
-  uploadedById: int("uploadedById").notNull(),
-  pageId: int("pageId"),
+  uploadedById: integer("uploadedById").notNull(),
+  pageId: integer("pageId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("media_page_idx").on(table.pageId),
@@ -162,12 +191,12 @@ export type InsertMediaFile = typeof mediaFiles.$inferInsert;
 /**
  * Activity log for audit trail
  */
-export const activityLogs = mysqlTable("activity_logs", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId"),
+export const activityLogs = pgTable("activity_logs", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId"),
   action: varchar("action", { length: 100 }).notNull(),
   entityType: varchar("entityType", { length: 50 }).notNull(),
-  entityId: int("entityId"),
+  entityId: integer("entityId"),
   details: json("details"),
   ipAddress: varchar("ipAddress", { length: 45 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -182,12 +211,12 @@ export type InsertActivityLog = typeof activityLogs.$inferInsert;
 /**
  * System settings
  */
-export const systemSettings = mysqlTable("system_settings", {
-  id: int("id").autoincrement().primaryKey(),
+export const systemSettings = pgTable("system_settings", {
+  id: serial("id").primaryKey(),
   key: varchar("key", { length: 100 }).notNull().unique(),
   value: text("value"),
   description: text("description"),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type SystemSetting = typeof systemSettings.$inferSelect;
@@ -196,15 +225,15 @@ export type InsertSystemSetting = typeof systemSettings.$inferInsert;
 /**
  * Access requests for approval workflow
  */
-export const accessRequests = mysqlTable("access_requests", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  pageId: int("pageId"),
-  groupId: int("groupId"),
-  requestedPermission: mysqlEnum("requestedPermission", ["read", "edit", "admin"]).default("read").notNull(),
-  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+export const accessRequests = pgTable("access_requests", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  pageId: integer("pageId"),
+  groupId: integer("groupId"),
+  requestedPermission: permissionEnum("requestedPermission").default("read").notNull(),
+  status: requestStatusEnum("status").default("pending").notNull(),
   message: text("message"),
-  reviewedById: int("reviewedById"),
+  reviewedById: integer("reviewedById"),
   reviewedAt: timestamp("reviewedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
@@ -218,17 +247,17 @@ export type InsertAccessRequest = typeof accessRequests.$inferInsert;
 /**
  * Page templates for quick page creation
  */
-export const pageTemplates = mysqlTable("page_templates", {
-  id: int("id").autoincrement().primaryKey(),
+export const pageTemplates = pgTable("page_templates", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   category: varchar("category", { length: 100 }).default("general"),
   content: json("content").notNull(),
   icon: varchar("icon", { length: 100 }).default("file-text"),
   isPublic: boolean("isPublic").default(true),
-  createdById: int("createdById").notNull(),
+  createdById: integer("createdById").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, (table) => [
   index("template_category_idx").on(table.category),
   index("template_creator_idx").on(table.createdById),
@@ -368,25 +397,17 @@ export const pageTemplatesRelations = relations(pageTemplates, ({ one }) => ({
 /**
  * User notifications for page changes and system events
  */
-export const notifications = mysqlTable("notifications", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(), // recipient
-  type: mysqlEnum("type", [
-    "page_updated",      // Someone edited your page
-    "page_commented",    // Someone commented on your page
-    "page_shared",       // Someone shared a page with you
-    "mention",           // Someone mentioned you
-    "access_granted",    // Access to a page was granted
-    "access_requested",  // Someone requested access to your page
-    "system"             // System notification
-  ]).notNull(),
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  type: notificationTypeEnum("type").notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   message: text("message"),
-  pageId: int("pageId"),           // Related page (if applicable)
-  actorId: int("actorId"),         // User who triggered the notification
+  pageId: integer("pageId"),
+  actorId: integer("actorId"),
   isRead: boolean("isRead").default(false).notNull(),
   readAt: timestamp("readAt"),
-  metadata: json("metadata"),       // Additional data (e.g., diff summary)
+  metadata: json("metadata"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("notification_user_idx").on(table.userId),
@@ -400,17 +421,17 @@ export type InsertNotification = typeof notifications.$inferInsert;
 /**
  * User notification preferences
  */
-export const notificationPreferences = mysqlTable("notification_preferences", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull().unique(),
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().unique(),
   emailEnabled: boolean("emailEnabled").default(true).notNull(),
-  pageUpdates: boolean("pageUpdates").default(true).notNull(),      // Notify when my pages are edited
-  pageComments: boolean("pageComments").default(true).notNull(),    // Notify when my pages are commented
-  mentions: boolean("mentions").default(true).notNull(),            // Notify when I'm mentioned
-  accessRequests: boolean("accessRequests").default(true).notNull(), // Notify on access requests
+  pageUpdates: boolean("pageUpdates").default(true).notNull(),
+  pageComments: boolean("pageComments").default(true).notNull(),
+  mentions: boolean("mentions").default(true).notNull(),
+  accessRequests: boolean("accessRequests").default(true).notNull(),
   systemNotifications: boolean("systemNotifications").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;
@@ -443,10 +464,10 @@ export const notificationPreferencesRelations = relations(notificationPreference
 /**
  * User favorites - bookmarked pages for quick access
  */
-export const favorites = mysqlTable("favorites", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  pageId: int("pageId").notNull(),
+export const favorites = pgTable("favorites", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  pageId: integer("pageId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("favorites_user_idx").on(table.userId),
@@ -461,14 +482,14 @@ export type InsertFavorite = typeof favorites.$inferInsert;
 /**
  * Tags for categorizing pages
  */
-export const tags = mysqlTable("tags", {
-  id: int("id").autoincrement().primaryKey(),
+export const tags = pgTable("tags", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 100 }).notNull().unique(),
   slug: varchar("slug", { length: 100 }).notNull().unique(),
   color: varchar("color", { length: 7 }).default("#6B7280"),
   description: text("description"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  createdById: int("createdById"),
+  createdById: integer("createdById"),
 });
 
 export type Tag = typeof tags.$inferSelect;
@@ -477,12 +498,12 @@ export type InsertTag = typeof tags.$inferInsert;
 /**
  * Page-to-tag junction table
  */
-export const pageTags = mysqlTable("page_tags", {
-  id: int("id").autoincrement().primaryKey(),
-  pageId: int("pageId").notNull(),
-  tagId: int("tagId").notNull(),
+export const pageTags = pgTable("page_tags", {
+  id: serial("id").primaryKey(),
+  pageId: integer("pageId").notNull(),
+  tagId: integer("tagId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  createdById: int("createdById"),
+  createdById: integer("createdById"),
 }, (table) => [
   index("page_tag_idx").on(table.pageId, table.tagId),
 ]);
@@ -494,15 +515,15 @@ export type InsertPageTag = typeof pageTags.$inferInsert;
 /**
  * Traefik metrics history for trend analysis
  */
-export const traefikMetrics = mysqlTable("traefik_metrics", {
-  id: int("id").autoincrement().primaryKey(),
+export const traefikMetrics = pgTable("traefik_metrics", {
+  id: serial("id").primaryKey(),
   serviceName: varchar("serviceName", { length: 255 }).notNull(),
-  requestsTotal: int("requestsTotal").default(0).notNull(),
+  requestsTotal: integer("requestsTotal").default(0).notNull(),
   requestsPerSecond: decimal("requestsPerSecond", { precision: 10, scale: 2 }).default("0"),
-  avgLatencyMs: int("avgLatencyMs").default(0).notNull(),
-  errors4xx: int("errors4xx").default(0).notNull(),
-  errors5xx: int("errors5xx").default(0).notNull(),
-  openConnections: int("openConnections").default(0),
+  avgLatencyMs: integer("avgLatencyMs").default(0).notNull(),
+  errors4xx: integer("errors4xx").default(0).notNull(),
+  errors5xx: integer("errors5xx").default(0).notNull(),
+  openConnections: integer("openConnections").default(0),
   collectedAt: timestamp("collectedAt").defaultNow().notNull(),
 }, (table) => [
   index("traefik_metrics_service_idx").on(table.serviceName),
@@ -516,30 +537,23 @@ export type InsertTraefikMetric = typeof traefikMetrics.$inferInsert;
 /**
  * Traefik alert thresholds configuration
  */
-export const traefikAlertThresholds = mysqlTable("traefik_alert_thresholds", {
-  id: int("id").autoincrement().primaryKey(),
+export const traefikAlertThresholds = pgTable("traefik_alert_thresholds", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
-  serviceName: varchar("serviceName", { length: 255 }), // null = all services
-  metricType: mysqlEnum("metricType", [
-    "errors_4xx_rate",
-    "errors_5xx_rate",
-    "latency_avg",
-    "latency_p95",
-    "requests_per_second",
-    "error_total_rate"
-  ]).notNull(),
-  operator: mysqlEnum("operator", ["gt", "lt", "gte", "lte", "eq"]).notNull(),
+  serviceName: varchar("serviceName", { length: 255 }),
+  metricType: metricTypeEnum("metricType").notNull(),
+  operator: operatorEnum("operator").notNull(),
   threshold: decimal("threshold", { precision: 10, scale: 2 }).notNull(),
-  windowMinutes: int("windowMinutes").default(5).notNull(),
+  windowMinutes: integer("windowMinutes").default(5).notNull(),
   isEnabled: boolean("isEnabled").default(true).notNull(),
   notifyEmail: boolean("notifyEmail").default(true).notNull(),
   notifyWebhook: boolean("notifyWebhook").default(false).notNull(),
   webhookUrl: text("webhookUrl"),
-  cooldownMinutes: int("cooldownMinutes").default(15).notNull(),
+  cooldownMinutes: integer("cooldownMinutes").default(15).notNull(),
   lastTriggeredAt: timestamp("lastTriggeredAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  createdById: int("createdById"),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  createdById: integer("createdById"),
 });
 
 export type TraefikAlertThreshold = typeof traefikAlertThresholds.$inferSelect;
@@ -548,16 +562,16 @@ export type InsertTraefikAlertThreshold = typeof traefikAlertThresholds.$inferIn
 /**
  * Traefik alert history
  */
-export const traefikAlerts = mysqlTable("traefik_alerts", {
-  id: int("id").autoincrement().primaryKey(),
-  thresholdId: int("thresholdId").notNull(),
+export const traefikAlerts = pgTable("traefik_alerts", {
+  id: serial("id").primaryKey(),
+  thresholdId: integer("thresholdId").notNull(),
   serviceName: varchar("serviceName", { length: 255 }).notNull(),
   metricType: varchar("metricType", { length: 100 }).notNull(),
   currentValue: decimal("currentValue", { precision: 10, scale: 2 }).notNull(),
   thresholdValue: decimal("thresholdValue", { precision: 10, scale: 2 }).notNull(),
-  status: mysqlEnum("status", ["triggered", "resolved", "acknowledged"]).default("triggered").notNull(),
+  status: alertStatusEnum("status").default("triggered").notNull(),
   message: text("message"),
-  acknowledgedById: int("acknowledgedById"),
+  acknowledgedById: integer("acknowledgedById"),
   acknowledgedAt: timestamp("acknowledgedAt"),
   resolvedAt: timestamp("resolvedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -574,18 +588,18 @@ export type InsertTraefikAlert = typeof traefikAlerts.$inferInsert;
 /**
  * Traefik configuration files for auto-apply
  */
-export const traefikConfigFiles = mysqlTable("traefik_config_files", {
-  id: int("id").autoincrement().primaryKey(),
+export const traefikConfigFiles = pgTable("traefik_config_files", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   filePath: text("filePath").notNull(),
-  format: mysqlEnum("format", ["yaml", "toml"]).default("yaml").notNull(),
+  format: configFormatEnum("format").default("yaml").notNull(),
   content: text("content"),
   isAutoApply: boolean("isAutoApply").default(false).notNull(),
   lastAppliedAt: timestamp("lastAppliedAt"),
   lastError: text("lastError"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  createdById: int("createdById"),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  createdById: integer("createdById"),
 });
 
 export type TraefikConfigFile = typeof traefikConfigFiles.$inferSelect;
@@ -621,15 +635,15 @@ export const traefikConfigFilesRelations = relations(traefikConfigFiles, ({ one 
 /**
  * Notification integrations (Telegram, Slack, etc.)
  */
-export const notificationIntegrations = mysqlTable("notification_integrations", {
-  id: int("id").autoincrement().primaryKey(),
-  provider: mysqlEnum("provider", ["telegram", "slack", "discord", "email"]).notNull(),
-  config: text("config").notNull(), // JSON config
+export const notificationIntegrations = pgTable("notification_integrations", {
+  id: serial("id").primaryKey(),
+  provider: providerEnum("provider").notNull(),
+  config: text("config").notNull(),
   isEnabled: boolean("isEnabled").default(true).notNull(),
   lastTestedAt: timestamp("lastTestedAt"),
   lastTestSuccess: boolean("lastTestSuccess"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, (table) => [
   index("notification_integrations_provider_idx").on(table.provider),
 ]);
@@ -640,13 +654,13 @@ export type InsertNotificationIntegration = typeof notificationIntegrations.$inf
 /**
  * Notification logs for tracking sent notifications
  */
-export const notificationLogs = mysqlTable("notification_logs", {
-  id: int("id").autoincrement().primaryKey(),
-  provider: mysqlEnum("provider", ["telegram", "slack", "discord", "email", "webhook"]).notNull(),
-  alertId: int("alertId"),
+export const notificationLogs = pgTable("notification_logs", {
+  id: serial("id").primaryKey(),
+  provider: providerExtEnum("provider").notNull(),
+  alertId: integer("alertId"),
   title: varchar("title", { length: 255 }).notNull(),
   message: text("message"),
-  severity: mysqlEnum("severity", ["info", "warning", "error", "critical"]).default("info").notNull(),
+  severity: severityEnum("severity").default("info").notNull(),
   success: boolean("success").default(false).notNull(),
   error: text("error"),
   messageId: varchar("messageId", { length: 255 }),

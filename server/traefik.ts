@@ -563,7 +563,7 @@ export async function saveDockerSettings(settings: DockerSettings): Promise<void
   
   for (const setting of settingsToSave) {
     await dbInstance.insert(systemSettings).values(setting)
-      .onDuplicateKeyUpdate({ set: { value: setting.value, description: setting.description } });
+      .onConflictDoUpdate({ target: systemSettings.key, set: { value: setting.value, description: setting.description } });
   }
 }
 
