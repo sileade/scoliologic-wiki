@@ -13,6 +13,7 @@
  * - Откат при ошибках деплоя
  * - Уведомления в Telegram/Slack
  * - Веб-интерфейс для статуса и истории
+ * - GitHub Webhook для мгновенного деплоя при push
  */
 
 import express from 'express';
@@ -63,6 +64,11 @@ const config = {
   // Server
   port: parseInt(process.env.PORT || '8080', 10),
   logLevel: process.env.LOG_LEVEL || 'info',
+  
+  // Webhook settings
+  webhookSecret: process.env.WEBHOOK_SECRET || '',
+  webhookEnabled: process.env.WEBHOOK_ENABLED !== 'false',
+  webhookEvents: (process.env.WEBHOOK_EVENTS || 'push,release').split(',').map(e => e.trim()),
 };
 
 // ============================================
@@ -109,7 +115,14 @@ const state = {
     totalChecks: 0,
     totalUpdates: 0,
     totalErrors: 0,
-    totalRollbacks: 0
+    totalRollbacks: 0,
+    totalWebhooks: 0,
+    webhookErrors: 0
+  },
+  webhook: {
+    lastReceived: null,
+    lastEvent: null,
+    lastSender: null
   }
 };
 
@@ -530,7 +543,50 @@ async function waitForHealthy(maxAttempts = 30, interval = 5000) {
 // ============================================
 
 const app = express();
+
+// Raw body parser for webhook signature verification
+app.use('/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
+
+// ============================================
+// WEBHOOK HELPERS
+// ============================================
+
+function verifyWebhookSignature(payload, signature) {
+  if (!config.webhookSecret) {
+    logger.warn('Webhook secret not configured, skipping signature verification');
+    return true;
+  }
+  
+  if (!signature) {
+    logger.warn('No signature provided in webhook request');
+    return false;
+  }
+  
+  const expectedSignature = 'sha256=' + crypto
+    .createHmac('sha256', config.webhookSecret)
+    .update(payload)
+    .digest('hex');
+  
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch (error) {
+    logger.error('Signature verification error:', error);
+    return false;
+  }
+}
+
+function parseWebhookPayload(body) {
+  try {
+    return JSON.parse(body.toString());
+  } catch (error) {
+    logger.error('Failed to parse webhook payload:', error);
+    return null;
+  }
+}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -551,11 +607,20 @@ app.get('/status', (req, res) => {
     lastCommit: state.lastCommit,
     error: state.error,
     stats: state.stats,
+    webhook: {
+      enabled: config.webhookEnabled,
+      hasSecret: !!config.webhookSecret,
+      events: config.webhookEvents,
+      lastReceived: state.webhook.lastReceived,
+      lastEvent: state.webhook.lastEvent,
+      lastSender: state.webhook.lastSender
+    },
     config: {
       repoUrl: config.repoUrl,
       branch: config.branch,
       pullInterval: config.pullInterval,
-      rollbackOnFailure: config.rollbackOnFailure
+      rollbackOnFailure: config.rollbackOnFailure,
+      webhookEnabled: config.webhookEnabled
     }
   });
 });
@@ -565,6 +630,181 @@ app.get('/history', (req, res) => {
   const limit = parseInt(req.query.limit || '20', 10);
   res.json(state.history.slice(0, limit));
 });
+
+// ============================================
+// GITHUB WEBHOOK ENDPOINT
+// ============================================
+
+app.post('/webhook', async (req, res) => {
+  // Check if webhook is enabled
+  if (!config.webhookEnabled) {
+    logger.warn('Webhook received but webhooks are disabled');
+    return res.status(403).json({ error: 'Webhooks are disabled' });
+  }
+  
+  const signature = req.headers['x-hub-signature-256'];
+  const event = req.headers['x-github-event'];
+  const deliveryId = req.headers['x-github-delivery'];
+  
+  logger.info(`Webhook received: event=${event}, delivery=${deliveryId}`);
+  
+  // Verify signature
+  if (!verifyWebhookSignature(req.body, signature)) {
+    logger.warn('Webhook signature verification failed');
+    state.stats.webhookErrors++;
+    await saveState();
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  
+  // Parse payload
+  const payload = parseWebhookPayload(req.body);
+  if (!payload) {
+    state.stats.webhookErrors++;
+    await saveState();
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+  
+  // Update webhook state
+  state.webhook.lastReceived = new Date().toISOString();
+  state.webhook.lastEvent = event;
+  state.webhook.lastSender = payload.sender?.login || 'unknown';
+  state.stats.totalWebhooks++;
+  
+  // Check if event is in allowed list
+  if (!config.webhookEvents.includes(event)) {
+    logger.info(`Ignoring event type: ${event}`);
+    await saveState();
+    return res.json({ message: 'Event ignored', event });
+  }
+  
+  // Handle different event types
+  switch (event) {
+    case 'push':
+      return handlePushEvent(payload, res);
+    case 'release':
+      return handleReleaseEvent(payload, res);
+    case 'ping':
+      return handlePingEvent(payload, res);
+    default:
+      logger.info(`Unhandled event type: ${event}`);
+      await saveState();
+      return res.json({ message: 'Event received but not handled', event });
+  }
+});
+
+async function handlePushEvent(payload, res) {
+  const branch = payload.ref?.replace('refs/heads/', '');
+  const pusher = payload.pusher?.name || 'unknown';
+  const commits = payload.commits?.length || 0;
+  const headCommit = payload.head_commit;
+  
+  logger.info(`Push event: branch=${branch}, pusher=${pusher}, commits=${commits}`);
+  
+  // Check if push is to our branch
+  if (branch !== config.branch) {
+    logger.info(`Ignoring push to branch ${branch} (watching ${config.branch})`);
+    await saveState();
+    return res.json({ 
+      message: 'Push ignored - different branch', 
+      receivedBranch: branch,
+      watchingBranch: config.branch
+    });
+  }
+  
+  // Check if already running
+  if (state.isRunning) {
+    logger.warn('Update already in progress, queuing webhook trigger');
+    await saveState();
+    return res.status(202).json({ 
+      message: 'Update already in progress, will check after current update',
+      status: 'queued'
+    });
+  }
+  
+  // Acknowledge webhook immediately
+  res.json({ 
+    message: 'Webhook received, starting deployment',
+    branch,
+    pusher,
+    commits,
+    commit: headCommit?.id?.slice(0, 8),
+    commitMessage: headCommit?.message
+  });
+  
+  // Notify about webhook trigger
+  await notify(
+    `📥 Webhook received!\n` +
+    `Branch: ${branch}\n` +
+    `Pusher: ${pusher}\n` +
+    `Commits: ${commits}\n` +
+    `Message: ${headCommit?.message || 'No message'}`
+  );
+  
+  // Trigger update in background
+  logger.info('Triggering update from webhook');
+  checkForUpdates();
+}
+
+async function handleReleaseEvent(payload, res) {
+  const action = payload.action;
+  const release = payload.release;
+  const tagName = release?.tag_name;
+  const releaseName = release?.name;
+  
+  logger.info(`Release event: action=${action}, tag=${tagName}, name=${releaseName}`);
+  
+  // Only handle published releases
+  if (action !== 'published') {
+    logger.info(`Ignoring release action: ${action}`);
+    await saveState();
+    return res.json({ message: 'Release action ignored', action });
+  }
+  
+  // Check if already running
+  if (state.isRunning) {
+    await saveState();
+    return res.status(202).json({ 
+      message: 'Update already in progress',
+      status: 'queued'
+    });
+  }
+  
+  // Acknowledge webhook
+  res.json({ 
+    message: 'Release webhook received, starting deployment',
+    tag: tagName,
+    name: releaseName
+  });
+  
+  // Notify about release
+  await notify(
+    `🎉 New release published!\n` +
+    `Tag: ${tagName}\n` +
+    `Name: ${releaseName}\n` +
+    `Starting deployment...`
+  );
+  
+  // Trigger update
+  checkForUpdates();
+}
+
+async function handlePingEvent(payload, res) {
+  const zen = payload.zen;
+  const hookId = payload.hook_id;
+  
+  logger.info(`Ping event received: hook_id=${hookId}, zen="${zen}"`);
+  
+  await notify(`👋 Webhook configured successfully!\nHook ID: ${hookId}`);
+  await saveState();
+  
+  res.json({ 
+    message: 'Pong! Webhook configured successfully',
+    hookId,
+    zen,
+    agent: 'Scoliologic Wiki Pull Agent',
+    version: '1.0.0'
+  });
+}
 
 // Manual trigger endpoint (check for updates and deploy if available)
 app.post('/trigger', async (req, res) => {
@@ -927,6 +1167,10 @@ app.get('/', (req, res) => {
           <div class="stat-value" id="stat-rollbacks">0</div>
           <div class="stat-label">Откатов</div>
         </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-webhooks">0</div>
+          <div class="stat-label">Webhooks</div>
+        </div>
       </div>
     </div>
     
@@ -945,6 +1189,30 @@ app.get('/', (req, res) => {
         <div class="info-value">-</div>
         <div class="info-label">Текущий коммит:</div>
         <div class="info-value">-</div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>🔗 GitHub Webhook</h2>
+      <div class="info" id="webhook-info">
+        <div class="info-label">Статус:</div>
+        <div class="info-value" id="webhook-status">-</div>
+        <div class="info-label">URL:</div>
+        <div class="info-value" id="webhook-url">-</div>
+        <div class="info-label">События:</div>
+        <div class="info-value" id="webhook-events">-</div>
+        <div class="info-label">Последний webhook:</div>
+        <div class="info-value" id="webhook-last">-</div>
+        <div class="info-label">Отправитель:</div>
+        <div class="info-value" id="webhook-sender">-</div>
+      </div>
+      <div style="margin-top: 1rem; padding: 0.75rem; background: #334155; border-radius: 0.375rem; font-size: 0.75rem;">
+        <strong>Настройка в GitHub:</strong><br>
+        1. Settings → Webhooks → Add webhook<br>
+        2. Payload URL: <code id="webhook-payload-url">http://your-server:8080/webhook</code><br>
+        3. Content type: <code>application/json</code><br>
+        4. Secret: <code>значение WEBHOOK_SECRET</code><br>
+        5. Events: Push events, Releases
       </div>
     </div>
     
@@ -988,6 +1256,7 @@ app.get('/', (req, res) => {
         document.getElementById('stat-updates').textContent = data.stats.totalUpdates;
         document.getElementById('stat-errors').textContent = data.stats.totalErrors;
         document.getElementById('stat-rollbacks').textContent = data.stats.totalRollbacks;
+        document.getElementById('stat-webhooks').textContent = data.stats.totalWebhooks || 0;
         
         const info = document.getElementById('info');
         info.innerHTML = [
@@ -1014,6 +1283,20 @@ app.get('/', (req, res) => {
             statusEl.textContent = '';
             statusEl.className = 'action-status';
           }
+        }
+        
+        // Update webhook info
+        if (data.webhook) {
+          document.getElementById('webhook-status').innerHTML = data.webhook.enabled 
+            ? '<span style="color:#22c55e">✅ Включен</span>' + (data.webhook.hasSecret ? ' (защищён)' : ' <span style="color:#f59e0b">(без секрета!)</span>')
+            : '<span style="color:#ef4444">❌ Выключен</span>';
+          document.getElementById('webhook-url').textContent = window.location.origin + '/webhook';
+          document.getElementById('webhook-payload-url').textContent = window.location.origin + '/webhook';
+          document.getElementById('webhook-events').textContent = data.webhook.events?.join(', ') || '-';
+          document.getElementById('webhook-last').textContent = data.webhook.lastReceived 
+            ? new Date(data.webhook.lastReceived).toLocaleString('ru') + ' (' + data.webhook.lastEvent + ')'
+            : 'Ещё не получали';
+          document.getElementById('webhook-sender').textContent = data.webhook.lastSender || '-';
         }
       } catch (e) {
         console.error('Failed to fetch status:', e);

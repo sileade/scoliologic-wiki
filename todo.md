@@ -583,3 +583,12 @@
 - [x] Добавить кнопки в веб-интерфейс (Pull, Pull & Deploy, Restart, Rebuild)
 - [x] Добавить индикатор выполнения операций
 - [x] Обновить документацию GITOPS.md
+
+
+## GitHub Webhook интеграция (16.01.2026)
+- [x] Добавить POST /webhook endpoint для GitHub
+- [x] Реализовать верификацию подписи (HMAC SHA-256)
+- [x] Фильтрация по branch и событиям (push, release, ping)
+- [x] Добавить секрет WEBHOOK_SECRET в конфигурацию
+- [x] Обновить веб-интерфейс с информацией о webhook
+- [x] Обновить документацию GITOPS.md

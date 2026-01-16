@@ -138,6 +138,85 @@ curl -X POST http://localhost:8080/rollback \
 | POST | `/deploy` | Перезапуск/пересборка (без pull) |
 | POST | `/rebuild` | Полная пересборка Docker-образа |
 | POST | `/rollback` | Откатить к бэкапу |
+| POST | `/webhook` | GitHub Webhook endpoint |
+
+## GitHub Webhook
+
+Pull Agent поддерживает автоматический деплой при push в репозиторий через GitHub Webhook.
+
+### Настройка Webhook в GitHub
+
+1. Перейдите в репозиторий → **Settings** → **Webhooks** → **Add webhook**
+
+2. Заполните поля:
+   - **Payload URL**: `http://your-server:8080/webhook`
+   - **Content type**: `application/json`
+   - **Secret**: ваш `WEBHOOK_SECRET` (рекомендуется!)
+   - **SSL verification**: Enable (если используете HTTPS)
+
+3. Выберите события:
+   - **Just the push event** — для деплоя при каждом push
+   - **Let me select individual events** → Push events, Releases — для большего контроля
+
+4. Нажмите **Add webhook**
+
+### Переменные окружения
+
+```env
+# Webhook настройки
+WEBHOOK_SECRET=your_secret_here    # Секрет для подписи (HMAC SHA-256)
+WEBHOOK_ENABLED=true               # Включить/выключить webhook
+WEBHOOK_EVENTS=push,release        # Обрабатываемые события
+```
+
+### Поддерживаемые события
+
+| Событие | Описание |
+|---------|----------|
+| `push` | Запускает деплой при push в отслеживаемую ветку |
+| `release` | Запускает деплой при публикации релиза |
+| `ping` | Проверка соединения (отвечает "Pong!") |
+
+### Безопасность Webhook
+
+**Важно:** Всегда используйте `WEBHOOK_SECRET` для защиты от поддельных запросов!
+
+Генерация секрета:
+
+```bash
+openssl rand -hex 32
+```
+
+Pull Agent проверяет подпись `X-Hub-Signature-256` с использованием HMAC SHA-256.
+
+### Пример конфигурации
+
+```yaml
+# docker-compose.override.yml
+services:
+  pull-agent:
+    environment:
+      WEBHOOK_SECRET: "your-super-secret-key"
+      WEBHOOK_ENABLED: "true"
+      WEBHOOK_EVENTS: "push,release"
+```
+
+### Тестирование Webhook
+
+После настройки GitHub отправит `ping` событие. Проверьте ответ в:
+- GitHub → Settings → Webhooks → Recent Deliveries
+- Веб-интерфейс Pull Agent (http://your-server:8080)
+
+Успешный ответ на ping:
+```json
+{
+  "message": "Pong! Webhook configured successfully",
+  "hookId": 123456789,
+  "zen": "Responsive is better than fast.",
+  "agent": "Scoliologic Wiki Pull Agent",
+  "version": "1.0.0"
+}
+```
 
 ## Процесс обновления
 
