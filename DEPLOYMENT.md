@@ -2,6 +2,14 @@
 
 Данное руководство описывает процесс развёртывания Scoliologic Wiki на собственном сервере с использованием Docker, Traefik и MinIO (S3-совместимое хранилище).
 
+## Быстрая автоматическая установка
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sileade/scoliologic-wiki/main/deploy/scripts/install.sh | sudo bash
+```
+
+Скрипт автоматически установит Docker, клонирует репозиторий, настроит переменные окружения и запустит все сервисы.
+
 ## Требования к серверу
 
 Минимальные требования для комфортной работы приложения представлены в таблице ниже.
@@ -17,29 +25,54 @@
 
 Для использования AI-функций (Ollama) рекомендуется наличие NVIDIA GPU с минимум 8 GB VRAM.
 
-## Быстрый старт
+## Ручная установка
 
 Процесс развёртывания состоит из нескольких простых шагов. Сначала клонируйте репозиторий на сервер и перейдите в директорию проекта.
 
 ```bash
-git clone https://github.com/your-org/scoliologic-wiki.git
+git clone https://github.com/sileade/scoliologic-wiki.git
 cd scoliologic-wiki
 ```
 
 Скопируйте файл с примером переменных окружения и отредактируйте его, указав ваш домен и пароли.
 
 ```bash
-cp .env.production.example .env
+cp .env.example .env
 nano .env
 ```
 
-Запустите скрипт развёртывания, который автоматически соберёт образы и запустит все сервисы.
+Запустите сервисы с нужными профилями.
 
 ```bash
-./deploy.sh
+# Базовый запуск
+docker compose -f docker-compose.full.yml up -d
+
+# С мониторингом
+docker compose -f docker-compose.full.yml --profile monitoring up -d
+
+# С GitOps и мониторингом
+docker compose -f docker-compose.full.yml --profile gitops --profile monitoring up -d
+
+# Всё включено
+docker compose -f docker-compose.full.yml --profile all up -d
 ```
 
-После завершения скрипта приложение будет доступно по адресу `https://ваш-домен`.
+После завершения приложение будет доступно по адресу `https://ваш-домен`.
+
+## Профили Docker Compose
+
+Система использует профили для модульного запуска компонентов.
+
+| Профиль | Компоненты | Описание |
+|---------|------------|----------|
+| (default) | app, postgres, redis, minio | Базовые сервисы |
+| `ollama` | ollama, ollama-init | Локальный AI (требуется GPU) |
+| `traefik` | traefik | Reverse proxy с SSL |
+| `monitoring` | prometheus, grafana, alertmanager, redis-exporter | Мониторинг |
+| `ha` | redis-replica-*, redis-sentinel-* | Высокая доступность Redis |
+| `gitops` | pull-agent | Автоматическое обновление из GitHub |
+| `backup` | backup | Автоматическое резервное копирование |
+| `all` | Все компоненты | Полная установка |
 
 ## Структура сервисов
 
@@ -109,17 +142,64 @@ docker compose -f docker-compose.production.yml up -d
 
 ## Резервное копирование
 
-Регулярное резервное копирование критически важно для сохранности данных. Рекомендуется создавать резервные копии базы данных и S3 хранилища ежедневно.
+Регулярное резервное копирование критически важно для сохранности данных.
+
+### Автоматическое резервное копирование
+
+Включите профиль `backup` для автоматического бэкапа по расписанию:
 
 ```bash
-# Резервная копия базы данных
-docker compose -f docker-compose.production.yml exec mysql \
-  mysqldump -u wiki -p scoliologic_wiki > backup-$(date +%Y%m%d).sql
-
-# Резервная копия S3 данных
-docker compose -f docker-compose.production.yml exec minio \
-  mc mirror /data /backup
+docker compose -f docker-compose.full.yml --profile backup up -d
 ```
+
+### Ручное резервное копирование
+
+```bash
+# Полный бэкап
+./deploy/scripts/backup.sh
+
+# Только база данных
+./deploy/scripts/backup.sh --db-only
+
+# Только файлы
+./deploy/scripts/backup.sh --files-only
+```
+
+### Восстановление из бэкапа
+
+```bash
+# Показать доступные бэкапы
+./deploy/scripts/restore.sh --list
+
+# Восстановить
+./deploy/scripts/restore.sh /var/backups/scoliologic-wiki/wiki-backup-20260116_120000.tar.gz
+```
+
+## GitOps Pull Agent
+
+Pull Agent автоматически обновляет приложение при изменениях в GitHub репозитории.
+
+### Включение
+
+```bash
+docker compose -f docker-compose.full.yml --profile gitops up -d
+```
+
+### Настройка в .env
+
+```env
+GIT_REPO_URL=https://github.com/sileade/scoliologic-wiki.git
+GIT_BRANCH=main
+GIT_TOKEN=ghp_xxx  # для приватных репозиториев
+PULL_INTERVAL=300  # секунды
+ROLLBACK_ON_FAILURE=true
+```
+
+### Веб-интерфейс
+
+Pull Agent предоставляет веб-интерфейс на порту 8080 с информацией о статусе и истории деплоев.
+
+Подробнее: [GITOPS.md](GITOPS.md)
 
 ## Мониторинг
 

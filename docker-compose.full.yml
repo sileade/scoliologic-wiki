@@ -1,0 +1,656 @@
+# Scoliologic Wiki - Full Docker Compose Configuration
+# 
+# Профили запуска:
+#   - default: Базовые сервисы (app, postgres, redis, minio)
+#   - monitoring: Prometheus, Grafana, Alertmanager
+#   - ha: Redis Sentinel для высокой доступности
+#   - gitops: Pull-агент для автоматического обновления
+#   - traefik: Traefik reverse proxy (опционально, если нет внешнего)
+#
+# Примеры запуска:
+#   docker compose -f docker-compose.full.yml up -d                    # Базовый
+#   docker compose -f docker-compose.full.yml --profile monitoring up -d  # С мониторингом
+#   docker compose -f docker-compose.full.yml --profile gitops up -d      # С GitOps
+#   docker compose -f docker-compose.full.yml --profile all up -d         # Всё
+
+version: '3.8'
+
+x-common-env: &common-env
+  TZ: ${TZ:-Europe/Moscow}
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+services:
+  # ============================================
+  # CORE SERVICES (always started)
+  # ============================================
+
+  # PostgreSQL Database with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: wiki-postgres
+    environment:
+      <<: *common-env
+      POSTGRES_DB: ${DB_NAME:-scoliologic_wiki}
+      POSTGRES_USER: ${DB_USER:-wiki}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=ru_RU.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./deploy/init-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql:ro
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wiki} -d ${DB_NAME:-scoliologic_wiki}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # Redis Cache for embeddings and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: wiki-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # MinIO S3 Storage
+  minio:
+    image: minio/minio:latest
+    container_name: wiki-minio
+    environment:
+      <<: *common-env
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_CONSOLE_URL:-http://localhost:9001}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # MinIO Init - create bucket on first run
+  minio-init:
+    image: minio/mc:latest
+    container_name: wiki-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc mb myminio/${AWS_S3_BUCKET:-wiki-storage} --ignore-existing;
+      mc anonymous set download myminio/${AWS_S3_BUCKET:-wiki-storage}/public;
+      echo 'MinIO bucket initialized';
+      exit 0;
+      "
+    networks:
+      - wiki-network
+
+  # Wiki Application
+  app:
+    build:
+      context: .
+      dockerfile: ./deploy/Dockerfile
+      args:
+        NODE_ENV: production
+    image: scoliologic-wiki:${APP_VERSION:-latest}
+    container_name: wiki-app
+    environment:
+      <<: *common-env
+      NODE_ENV: production
+      PORT: 3000
+      # Database
+      DATABASE_URL: postgresql://${DB_USER:-wiki}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-scoliologic_wiki}
+      # Auth
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-me-in-production}
+      VITE_APP_ID: ${VITE_APP_ID}
+      VITE_APP_TITLE: ${VITE_APP_TITLE:-Scoliologic Wiki}
+      VITE_APP_LOGO: ${VITE_APP_LOGO}
+      OAUTH_SERVER_URL: ${OAUTH_SERVER_URL}
+      VITE_OAUTH_PORTAL_URL: ${VITE_OAUTH_PORTAL_URL}
+      OWNER_OPEN_ID: ${OWNER_OPEN_ID}
+      OWNER_NAME: ${OWNER_NAME}
+      # Forge API
+      BUILT_IN_FORGE_API_URL: ${BUILT_IN_FORGE_API_URL}
+      BUILT_IN_FORGE_API_KEY: ${BUILT_IN_FORGE_API_KEY}
+      VITE_FRONTEND_FORGE_API_URL: ${VITE_FRONTEND_FORGE_API_URL}
+      VITE_FRONTEND_FORGE_API_KEY: ${VITE_FRONTEND_FORGE_API_KEY}
+      # Analytics
+      VITE_ANALYTICS_ENDPOINT: ${VITE_ANALYTICS_ENDPOINT}
+      VITE_ANALYTICS_WEBSITE_ID: ${VITE_ANALYTICS_WEBSITE_ID}
+      # S3 Storage
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_S3_ENDPOINT: http://minio:9000
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-wiki-storage}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      # Ollama AI (external or internal)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      LLM_MODEL: ${LLM_MODEL:-llama3.1:70b}
+      # Redis Cache
+      REDIS_URL: redis://redis:6379
+      # Notifications
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wiki.rule=Host(`${WIKI_DOMAIN:-wiki.localhost}`)"
+      - "traefik.http.routers.wiki.entrypoints=web,websecure"
+      - "traefik.http.routers.wiki.tls=true"
+      - "traefik.http.routers.wiki.tls.certresolver=letsencrypt"
+      - "traefik.http.services.wiki.loadbalancer.server.port=3000"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ============================================
+  # OLLAMA (optional - use external if available)
+  # ============================================
+  
+  ollama:
+    image: ollama/ollama:latest
+    container_name: wiki-ollama
+    profiles: ["ollama", "all"]
+    environment:
+      <<: *common-env
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 24h
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+        limits:
+          memory: 32G
+
+  # Ollama Model Puller - downloads required models on first run
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: wiki-ollama-init
+    profiles: ["ollama", "all"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Pulling embedding model...';
+      ollama pull ${EMBEDDING_MODEL:-nomic-embed-text};
+      echo 'Pulling LLM model...';
+      ollama pull ${LLM_MODEL:-llama3.1:70b};
+      echo 'Models ready!';
+      exit 0;
+      "
+    networks:
+      - wiki-network
+
+  # ============================================
+  # TRAEFIK (optional - use external if available)
+  # ============================================
+
+  traefik:
+    image: traefik:v3.0
+    container_name: wiki-traefik
+    profiles: ["traefik", "all"]
+    command:
+      - "--api.insecure=true"
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_data:/letsencrypt
+      - traefik_logs:/var/log/traefik
+      - ./deploy/traefik/dynamic:/etc/traefik/dynamic:ro
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${WIKI_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+
+  # ============================================
+  # MONITORING STACK
+  # ============================================
+
+  # Redis Exporter for Prometheus metrics
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: wiki-redis-exporter
+    profiles: ["monitoring", "all"]
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: wiki-prometheus
+    profiles: ["monitoring", "all"]
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${WIKI_DOMAIN:-localhost}`)"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: wiki-grafana
+    profiles: ["monitoring", "all"]
+    environment:
+      <<: *common-env
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3001}
+      GF_INSTALL_PLUGINS: redis-datasource,grafana-piechart-panel
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${WIKI_DOMAIN:-localhost}`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+  # Alertmanager for notifications
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: wiki-alertmanager
+    profiles: ["monitoring", "all"]
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://alertmanager.${WIKI_DOMAIN:-localhost}'
+    volumes:
+      - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.alertmanager.rule=Host(`alertmanager.${WIKI_DOMAIN:-localhost}`)"
+      - "traefik.http.services.alertmanager.loadbalancer.server.port=9093"
+
+  # ============================================
+  # HIGH AVAILABILITY (Redis Sentinel)
+  # ============================================
+
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: wiki-redis-replica-1
+    profiles: ["ha", "all"]
+    command: >
+      redis-server
+      --appendonly yes
+      --replicaof redis 6379
+      --replica-announce-ip redis-replica-1
+      --replica-announce-port 6379
+    volumes:
+      - redis_replica1_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      wiki-network:
+        aliases:
+          - redis-replica-1
+    restart: unless-stopped
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-replica-2:
+    image: redis:7-alpine
+    container_name: wiki-redis-replica-2
+    profiles: ["ha", "all"]
+    command: >
+      redis-server
+      --appendonly yes
+      --replicaof redis 6379
+      --replica-announce-ip redis-replica-2
+      --replica-announce-port 6379
+    volumes:
+      - redis_replica2_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      wiki-network:
+        aliases:
+          - redis-replica-2
+    restart: unless-stopped
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-sentinel-1:
+    image: redis:7-alpine
+    container_name: wiki-redis-sentinel-1
+    profiles: ["ha", "all"]
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./deploy/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+      - sentinel1_data:/data
+    depends_on:
+      - redis
+      - redis-replica-1
+      - redis-replica-2
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  redis-sentinel-2:
+    image: redis:7-alpine
+    container_name: wiki-redis-sentinel-2
+    profiles: ["ha", "all"]
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./deploy/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+      - sentinel2_data:/data
+    depends_on:
+      - redis
+      - redis-replica-1
+      - redis-replica-2
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  redis-sentinel-3:
+    image: redis:7-alpine
+    container_name: wiki-redis-sentinel-3
+    profiles: ["ha", "all"]
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./deploy/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+      - sentinel3_data:/data
+    depends_on:
+      - redis
+      - redis-replica-1
+      - redis-replica-2
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # ============================================
+  # GITOPS PULL AGENT
+  # ============================================
+
+  pull-agent:
+    build:
+      context: ./deploy/pull-agent
+      dockerfile: Dockerfile
+    image: scoliologic-wiki-pull-agent:${APP_VERSION:-latest}
+    container_name: wiki-pull-agent
+    profiles: ["gitops", "all"]
+    environment:
+      <<: *common-env
+      # Git configuration
+      GIT_REPO_URL: ${GIT_REPO_URL:-https://github.com/sileade/scoliologic-wiki.git}
+      GIT_BRANCH: ${GIT_BRANCH:-main}
+      GIT_TOKEN: ${GIT_TOKEN}
+      # Pull interval (in seconds)
+      PULL_INTERVAL: ${PULL_INTERVAL:-300}
+      # Docker socket for container management
+      DOCKER_HOST: unix:///var/run/docker.sock
+      # Notification settings
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+      # App container name
+      APP_CONTAINER: wiki-app
+      # Database migration
+      DATABASE_URL: postgresql://${DB_USER:-wiki}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-scoliologic_wiki}
+      # Rollback settings
+      KEEP_BACKUPS: ${KEEP_BACKUPS:-5}
+      ROLLBACK_ON_FAILURE: ${ROLLBACK_ON_FAILURE:-true}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/app/repo
+      - pull_agent_data:/app/data
+      - pull_agent_backups:/app/backups
+    depends_on:
+      app:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - wiki-network
+    restart: unless-stopped
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # BACKUP SERVICE
+  # ============================================
+
+  backup:
+    image: postgres:17-alpine
+    container_name: wiki-backup
+    profiles: ["backup", "all"]
+    environment:
+      <<: *common-env
+      PGHOST: postgres
+      PGUSER: ${DB_USER:-wiki}
+      PGPASSWORD: ${DB_PASSWORD:-changeme}
+      PGDATABASE: ${DB_NAME:-scoliologic_wiki}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - ./deploy/scripts/backup.sh:/backup.sh:ro
+      - backup_data:/backups
+    entrypoint: ["/bin/sh", "-c", "crond -f -d 8"]
+    command: []
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+# ============================================
+# VOLUMES
+# ============================================
+
+volumes:
+  # Core
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  
+  # Ollama
+  ollama_data:
+    driver: local
+  
+  # Traefik
+  traefik_data:
+    driver: local
+  traefik_logs:
+    driver: local
+  
+  # Monitoring
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+  
+  # High Availability
+  redis_replica1_data:
+    driver: local
+  redis_replica2_data:
+    driver: local
+  sentinel1_data:
+    driver: local
+  sentinel2_data:
+    driver: local
+  sentinel3_data:
+    driver: local
+  
+  # GitOps
+  pull_agent_data:
+    driver: local
+  pull_agent_backups:
+    driver: local
+  
+  # Backup
+  backup_data:
+    driver: local
+
+# ============================================
+# NETWORKS
+# ============================================
+
+networks:
+  wiki-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

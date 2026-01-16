@@ -1,0 +1,22 @@
+{
+  "name": "scoliologic-wiki-pull-agent",
+  "version": "1.0.0",
+  "description": "GitOps-lite Pull Agent for Scoliologic Wiki",
+  "main": "agent.js",
+  "type": "module",
+  "scripts": {
+    "start": "node agent.js",
+    "dev": "node --watch agent.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "dockerode": "^4.0.2",
+    "simple-git": "^3.22.0",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
