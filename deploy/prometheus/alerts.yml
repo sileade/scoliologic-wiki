@@ -1,0 +1,88 @@
+# Prometheus Alert Rules for Scoliologic Wiki
+groups:
+  - name: redis_alerts
+    rules:
+      # Redis down
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance {{ $labels.instance }} is down for more than 1 minute."
+
+      # Redis high memory usage
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis memory usage is above 80% (current: {{ $value }}%)"
+
+      # Redis too many connections
+      - alert: RedisTooManyConnections
+        expr: redis_connected_clients > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis too many connections"
+          description: "Redis has {{ $value }} connected clients"
+
+      # Redis low hit rate
+      - alert: RedisLowHitRate
+        expr: |
+          (redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100 < 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis low cache hit rate"
+          description: "Redis cache hit rate is below 50% (current: {{ $value }}%)"
+
+      # Redis rejected connections
+      - alert: RedisRejectedConnections
+        expr: increase(redis_rejected_connections_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis rejected connections"
+          description: "Redis is rejecting connections"
+
+      # Redis replication broken
+      - alert: RedisReplicationBroken
+        expr: redis_connected_slaves < 2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis replication broken"
+          description: "Redis master has less than 2 connected slaves (current: {{ $value }})"
+
+  - name: wiki_alerts
+    rules:
+      # High error rate
+      - alert: WikiHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Wiki high error rate"
+          description: "Error rate is above 5% (current: {{ $value }}%)"
+
+      # Slow response time
+      - alert: WikiSlowResponseTime
+        expr: |
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Wiki slow response time"
+          description: "95th percentile response time is above 2 seconds"

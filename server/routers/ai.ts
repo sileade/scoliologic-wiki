@@ -15,6 +15,13 @@ import {
   getAvailableModels,
   generateText,
 } from "../ollama";
+import {
+  startBatchEmbeddings,
+  stopBatchEmbeddings,
+  resumeBatchEmbeddings,
+  getBatchProgress,
+  getEmbeddingsStats,
+} from "../batchEmbeddings";
 
 // Helper function to split text into chunks
 function splitIntoChunks(text: string, maxLength: number = 500): string[] {
@@ -193,4 +200,41 @@ export const aiRouter = router({
     const models = available ? await getAvailableModels() : [];
     return { available, models };
   }),
+  
+  // Batch embeddings: start processing
+  batchStart: protectedProcedure
+    .input(z.object({
+      forceRegenerate: z.boolean().optional(),
+      pageIds: z.array(z.number()).optional(),
+    }).optional())
+    .mutation(async ({ input }) => {
+      await startBatchEmbeddings(input);
+      return { success: true, message: 'Batch processing started' };
+    }),
+  
+  // Batch embeddings: stop processing
+  batchStop: protectedProcedure
+    .mutation(async () => {
+      stopBatchEmbeddings();
+      return { success: true, message: 'Batch processing stopped' };
+    }),
+  
+  // Batch embeddings: resume processing
+  batchResume: protectedProcedure
+    .mutation(async () => {
+      await resumeBatchEmbeddings();
+      return { success: true, message: 'Batch processing resumed' };
+    }),
+  
+  // Batch embeddings: get progress
+  batchProgress: protectedProcedure
+    .query(async () => {
+      return getBatchProgress();
+    }),
+  
+  // Get embeddings coverage statistics
+  embeddingsStats: protectedProcedure
+    .query(async () => {
+      return getEmbeddingsStats();
+    }),
 });

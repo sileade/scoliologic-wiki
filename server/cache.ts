@@ -29,21 +29,64 @@ let redisClient: Redis | null = null;
 let connectionAttempted = false;
 
 /**
+ * Parse Sentinel hosts from environment variable
+ * Format: "host1:port1,host2:port2,host3:port3"
+ */
+function parseSentinelHosts(hostsStr: string): Array<{ host: string; port: number }> {
+  return hostsStr.split(',').map(hostPort => {
+    const [host, port] = hostPort.trim().split(':');
+    return { host, port: parseInt(port, 10) || 26379 };
+  });
+}
+
+/**
  * Get or create Redis client
+ * Supports both standalone Redis and Redis Sentinel for HA
  */
 export function getRedisClient(): Redis | null {
   if (redisClient) return redisClient;
   if (connectionAttempted) return null;
   
   const redisUrl = process.env.REDIS_URL;
-  if (!redisUrl) {
-    console.debug('[Cache] REDIS_URL not configured, caching disabled');
+  const sentinelHosts = process.env.REDIS_SENTINEL_HOSTS;
+  const sentinelName = process.env.REDIS_SENTINEL_NAME || 'mymaster';
+  
+  if (!redisUrl && !sentinelHosts) {
+    console.debug('[Cache] REDIS_URL or REDIS_SENTINEL_HOSTS not configured, caching disabled');
     connectionAttempted = true;
     return null;
   }
   
   try {
-    redisClient = new Redis(redisUrl);
+    // Use Sentinel if configured, otherwise use standalone Redis
+    if (sentinelHosts) {
+      const sentinels = parseSentinelHosts(sentinelHosts);
+      console.log(`[Cache] Connecting to Redis via Sentinel (${sentinelName}) with ${sentinels.length} sentinels`);
+      
+      redisClient = new Redis({
+        sentinels,
+        name: sentinelName,
+        // Sentinel-specific options
+        sentinelRetryStrategy: (times: number) => {
+          const delay = Math.min(times * 100, 3000);
+          return delay;
+        },
+        // Reconnect on failover
+        enableReadyCheck: true,
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times: number) => {
+          if (times > 10) {
+            console.error('[Cache] Redis connection failed after 10 retries');
+            return null;
+          }
+          const delay = Math.min(times * 200, 5000);
+          return delay;
+        },
+      });
+    } else {
+      console.log('[Cache] Connecting to standalone Redis');
+      redisClient = new Redis(redisUrl!);
+    }
     
     redisClient.on('error', (err) => {
       console.warn('[Cache] Redis error:', err.message);
@@ -51,6 +94,14 @@ export function getRedisClient(): Redis | null {
     
     redisClient.on('connect', () => {
       console.log('[Cache] Redis connected');
+    });
+    
+    redisClient.on('+switch-master', (newMaster: string) => {
+      console.log(`[Cache] Redis Sentinel: switched to new master ${newMaster}`);
+    });
+    
+    redisClient.on('reconnecting', () => {
+      console.log('[Cache] Redis reconnecting...');
     });
     
     connectionAttempted = true;

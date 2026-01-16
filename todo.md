@@ -525,3 +525,17 @@
 - [x] Добавить TTL и инвалидацию кэша (24h embeddings, 1h assist)
 - [x] Обновить README с информацией о Redis
 - [x] Тестирование производительности (195/217 тестов)
+
+
+## Мониторинг Redis, Sentinel и Batch Embeddings (16.01.2026)
+
+- [x] Добавить Redis Exporter для Prometheus метрик
+- [x] Создать Grafana дашборд для Redis (hit/miss ratio, memory, connections)
+- [x] Обновить docker-compose.yml с Prometheus и Grafana (docker-compose.monitoring.yml)
+- [x] Настроить Redis Sentinel (master + 2 replicas) - docker-compose.sentinel.yml
+- [x] Обновить cache.ts для работы с Sentinel
+- [x] Реализовать batch-генерацию embeddings (batchEmbeddings.ts)
+- [x] Добавить endpoint для массовой индексации страниц (ai.batchStart/Stop/Resume/Progress)
+- [x] Создать UI для управления batch-индексацией (BatchEmbeddingsManager.tsx)
+- [x] Обновить README с документацией
+- [x] Тестирование всех компонентов (195/217 тестов)
