@@ -5,9 +5,21 @@ import fs from "node:fs";
 import path from "path";
 import { defineConfig } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { visualizer } from "rollup-plugin-visualizer";
 
-
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime()];
+const plugins = [
+  react(),
+  tailwindcss(),
+  jsxLocPlugin(),
+  vitePluginManusRuntime(),
+  // Визуализатор бандла (генерирует stats.html при сборке)
+  visualizer({
+    filename: "dist/stats.html",
+    open: false,
+    gzipSize: true,
+    brotliSize: true,
+  }),
+];
 
 export default defineConfig({
   plugins,
@@ -24,6 +36,21 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Оптимизация разделения чанков
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Выделяем React и связанные библиотеки в отдельный чанк
+          "vendor-react": ["react", "react-dom", "wouter"],
+          // UI компоненты
+          "vendor-ui": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-tabs"],
+          // TipTap редактор
+          "vendor-editor": ["@tiptap/react", "@tiptap/starter-kit", "@tiptap/core"],
+          // Chart.js
+          "vendor-charts": ["chart.js"],
+        },
+      },
+    },
   },
   server: {
     host: true,

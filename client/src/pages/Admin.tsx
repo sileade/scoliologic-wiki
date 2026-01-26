@@ -1,4 +1,18 @@
-import { useState } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
+
+// Ленивая загрузка тяжёлых компонентов админ-панели
+const AnalyticsDashboard = lazy(() => import("@/components/AnalyticsDashboard").then(m => ({ default: m.AnalyticsDashboard })));
+const AuthentikSyncPanel = lazy(() => import("@/components/AuthentikSyncPanel").then(m => ({ default: m.AuthentikSyncPanel })));
+const PagePermissionsPanel = lazy(() => import("@/components/PagePermissionsPanel").then(m => ({ default: m.PagePermissionsPanel })));
+const OllamaSettingsPanel = lazy(() => import("@/components/OllamaSettingsPanel").then(m => ({ default: m.OllamaSettingsPanel })));
+const MetricsDashboard = lazy(() => import("@/components/MetricsDashboard").then(m => ({ default: m.MetricsDashboard })));
+const TraefikSettingsPanel = lazy(() => import("@/components/TraefikSettingsPanel").then(m => ({ default: m.TraefikSettingsPanel })));
+const TraefikRoutersPanel = lazy(() => import("@/components/TraefikRoutersPanel").then(m => ({ default: m.TraefikRoutersPanel })));
+const TraefikTrafficCharts = lazy(() => import("@/components/TraefikTrafficCharts").then(m => ({ default: m.TraefikTrafficCharts })));
+const TraefikAlertsPanel = lazy(() => import("@/components/TraefikAlertsPanel").then(m => ({ default: m.TraefikAlertsPanel })));
+const NotificationIntegrationsPanel = lazy(() => import("@/components/NotificationIntegrationsPanel").then(m => ({ default: m.NotificationIntegrationsPanel })));
+const TraefikConfigPanel = lazy(() => import("@/components/TraefikConfigPanel").then(m => ({ default: m.TraefikConfigPanel })));
+const MinioSettingsPanel = lazy(() => import("@/components/MinioSettingsPanel").then(m => ({ default: m.MinioSettingsPanel })));
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -66,18 +80,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
-import { AuthentikSyncPanel } from "@/components/AuthentikSyncPanel";
-import { PagePermissionsPanel } from "@/components/PagePermissionsPanel";
-import { OllamaSettingsPanel } from "@/components/OllamaSettingsPanel";
-import { MetricsDashboard } from "@/components/MetricsDashboard";
-import { TraefikSettingsPanel } from "@/components/TraefikSettingsPanel";
-import { TraefikRoutersPanel } from "@/components/TraefikRoutersPanel";
-import { TraefikTrafficCharts } from "@/components/TraefikTrafficCharts";
-import { TraefikAlertsPanel } from "@/components/TraefikAlertsPanel";
-import { NotificationIntegrationsPanel } from "@/components/NotificationIntegrationsPanel";
-import { TraefikConfigPanel } from "@/components/TraefikConfigPanel";
-import { MinioSettingsPanel } from "@/components/MinioSettingsPanel";
 import { useTranslation } from "react-i18next";
 import { useLocalizedError } from "@/hooks/useLocalizedError";
 

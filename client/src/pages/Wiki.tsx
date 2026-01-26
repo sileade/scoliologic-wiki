@@ -1,8 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, Suspense, lazy } from "react";
 import { useLocation, useParams } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { WikiEditor } from "@/components/WikiEditor";
+
+// Ленивая загрузка тяжёлого компонента WikiEditor
+const WikiEditor = lazy(() => import("@/components/WikiEditor").then(m => ({ default: m.WikiEditor })));
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { FavoritesSidebar } from "@/components/FavoritesSidebar";
 import { TagInput } from "@/components/TagInput";
